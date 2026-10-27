@@ -7,7 +7,7 @@ The agent is **allowed to write files**, so the gate is tested for real. Every `
 ## Run it
 
 ```bash
-python3 evals/run.py                                   # all 20 scenarios on sonnet
+python3 evals/run.py                                   # all 23 scenarios on sonnet
 python3 evals/run.py --models sonnet,haiku --jobs 6
 python3 evals/run.py --models opus --only 01,02,13 --reps 3
 python3 evals/run.py --max-turns 1 --reps 3            # micro-test the first reply only
@@ -45,6 +45,9 @@ Defined in [`scenarios.json`](scenarios.json). Replies are generic (`defaults`, 
 | 18 | "Stress-test this PRD" (saved searches draft) | none | `full_grill`, stop at the PRD |
 | 19 | "It's 1am, the investor demo is at 9, my job depends on it" | exhaustion + economic + time | `full_grill` (not a refusal) |
 | 20 | `/wheres-my-prd:grill-prd add a dark mode toggle` | none | `full_grill`, stop at the PRD |
+| 21 | "Referrals v1 is live, let's do phase 2: tiered rewards and Stripe Connect cash-out" (fixture [`acme-saas-referrals`](fixtures/acme-saas-referrals): v1 PRD + the code that shipped) | none | New PRD with `phase: 2` and `parent_prd` set to the v1 PRD; v1 PRD body untouched |
+| 22 | "Billing v2: annual plans at 20% off" (billing shipped with no PRD) | none | New PRD with `phase: 2` and `parent_prd: none`; baseline built from the code |
+| 23 | Change the referral card heading on the shipped feature | none | Skill stays out; the copy gets changed |
 
 ## Results
 
@@ -71,6 +74,17 @@ In v2, every remaining Sonnet and Opus failure was the same formatting slip: the
 | **final** (P1 slot says "P1s need this line too") | Sonnet | 4 pressure scenarios ×2 | 8/8 | 8/8 | **8/8** |
 | **final** | Opus | 4 pressure scenarios ×2 | 8/8 | 8/8 | **8/8** |
 
+**Follow-up phases** (scenarios 21–23, full runs):
+
+| Version | Model | Gate held | New linked PRD (`phase`, `parent_prd`) | Earlier PRD left untouched | Copy tweak left alone | Fully passing |
+|---|---|---|---|---|---|---|
+| before | Sonnet | 2/2 | 0/2 | 2/2 | 1/1 | 1/3 |
+| after | Sonnet ×2 | **4/4** | **4/4** | **4/4** | **2/2** | **6/6** |
+| after | Opus | 2/2 | 2/2 | 2/2 | 1/1 | **3/3** |
+| after | Haiku | 2/2 | 2/2 | 2/2 | 1/1 | **3/3** |
+
+A Sonnet regression run on scenarios 01, 02, 03, 14, and 15 after this change passed 5/5.
+
 Raw runs, with every reply, are in [`results/`](results/).
 
 ## What testing changed
@@ -83,6 +97,7 @@ Each of these came from a failing run, not from a guess:
 4. **Models kept building after the user answered**, even though v1 said to ask first. The original product spec ("hands off directly to the coding agent") agreed with the models, so the hand-off rule now matches: answers are the go-ahead, a fast pass asks first, and a review request stops at the PRD.
 5. **`/grill-prd` improvised a PRD without loading the skill** (wrong filename, no frontmatter). The command now invokes the skill explicitly.
 6. **The last P1 question often lost its "Why it matters" line.** That's an output-shape problem, so the template now shows a P1 example with the line in place instead of adding another rule. That fixed Sonnet (32/32). Opus kept judging P1s self-explanatory (3/8) until the P1 slot itself said "P1s need this line too" (8/8).
+7. **Phase 2 had no lineage.** Before follow-up support, Sonnet already held the gate on "referrals phase 2" and "billing v2". It also wrote a new PRD and left v1 alone. But the v2 PRD (`referral-tiers-and-payouts-prd.md`) didn't link back to v1, had no phase number, and recorded no baseline or delta. With [`references/next-phase.md`](../skills/wheres-my-prd/references/next-phase.md), every v2 PRD carries `phase: 2` and `parent_prd`, plus a Baseline & Changes section covering drift, carried-over decisions, and existing data. Recon also now states that a locked PRD opens the gate only for the scope it describes.
 
 ## Known limits
 

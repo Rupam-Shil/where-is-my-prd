@@ -148,9 +148,20 @@ While `p0_blockers_remaining > 0`, the agent may not create, edit, or stub appli
 - **"No questions, just build it"** triggers the **Emergency Default Lock**. In one turn, the agent lists every assumption, writes the PRD first, and then codes. The validator flags the spec as never confirmed, so reviewers can see it. Nothing is assumed silently. See [`examples/emergency-lock-usage-billing.md`](examples/emergency-lock-usage-billing.md).
 - **A complete spec** fast-passes with zero questions. See [`examples/fast-pass-feedback-widget.md`](examples/fast-pass-feedback-widget.md).
 
+### Phase 2, v2, and existing projects
+
+Ask for "referrals phase 2" or "billing v2", and the skill treats what already shipped as the baseline.
+
+- **If the feature has a PRD,** it reads that PRD and the code that shipped, and flags any drift between them. It then asks only about the change: existing data, whether new rules are retroactive, compatibility, and rolling back to v1. Decisions that still hold aren't asked again.
+- **If the feature shipped without a PRD** (an existing project), it builds the baseline from the code instead.
+- **Either way, it writes a new PRD.** For example: `docs/prd/referral-system-v2-prd.md`, with `phase: 2`, `parent_prd`, and a Baseline & Changes section. The v1 PRD is never rewritten, because it's the record of what shipped.
+- **A copy tweak or bug fix** on a shipped feature doesn't trigger the skill.
+
+See a real run: [`examples/phase-2-referrals.md`](examples/phase-2-referrals.md).
+
 ## Tested against real Claude Code
 
-The skill runs against [20 scenarios](evals/) in headless Claude Code. The agent is free to write files, and the harness checks the order of every write. The scenarios include pressure tests:
+The skill runs against [23 scenarios](evals/) in headless Claude Code. The agent is free to write files, and the harness checks the order of every write. The scenarios include pressure tests:
 
 - an authority figure saying "don't overthink it"
 - a 1am investor-demo panic
@@ -163,7 +174,9 @@ The skill runs against [20 scenarios](evals/) in headless Claude Code. The agent
 | Claude Opus | **8/8** | **8/8** | **8/8** | **8/8** |
 | Claude Haiku | 15/18 | 15/18 | 13/18 | 12/16 |
 
-Testing found and fixed six real problems before launch. One example: "DO NOT ask me questions" used to make Claude skip the skill entirely, so the agent wrote code with no PRD. [`evals/`](evals/) has the full story, the raw runs, and `python3 evals/run.py` to reproduce them.
+Follow-up phases (phase 2 on a shipped feature, with or without an earlier PRD) pass on every model: Sonnet 6/6, Opus 3/3, Haiku 3/3.
+
+Testing found and fixed seven real problems before launch. One example: "DO NOT ask me questions" used to make Claude skip the skill entirely, so the agent wrote code with no PRD. [`evals/`](evals/) has the full story, the raw runs, and `python3 evals/run.py` to reproduce them.
 
 ## The output: a PRD your agent can execute in one shot
 
@@ -176,6 +189,8 @@ spec_readiness_score: 88          # must be >= 85 to unlock coding
 p0_blockers_remaining: 0          # must be 0 to unlock coding
 interrogation_mode: full_grill    # full_grill | fast_pass | emergency_default_lock
 approved_at: 2026-10-26T19:47:12Z
+phase: 1                          # 2, 3, … for follow-up phases
+parent_prd: none                  # phase 2+: the previous phase's PRD, or none
 ---
 ```
 
@@ -237,8 +252,8 @@ where-is-my-prd/
 │   ├── SKILL.md                # The skill (<1,800 tokens)
 │   ├── references/             # Rubric, domain packs, PRD template (loaded on demand)
 │   └── scripts/validate-prd.sh # Zero-dependency PRD linter
-├── examples/                   # Real transcripts for all three modes + generated PRDs
-├── evals/                      # 20 scenarios run against real headless Claude Code, results
+├── examples/                   # Real transcripts (all three modes + a phase 2) and their PRDs
+├── evals/                      # 23 scenarios run against real headless Claude Code, results
 ├── action.yml                  # GitHub Action: uses: Rupam-Shil/where-is-my-prd@v1
 └── tests/run.sh                # Validator + repo tests (sh, dash, bash, ksh)
 ```

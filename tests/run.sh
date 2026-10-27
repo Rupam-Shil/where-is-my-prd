@@ -32,11 +32,13 @@ fail() {
 
 # expect NAME WANT_EXIT WANT_TEXT TRANSFORM_FN
 # Applies TRANSFORM_FN (stdin -> stdout) to the fixture, then runs the validator under every shell.
+# Every case directory also holds parent-feature-prd.md, so follow-up phases have a parent to link to.
 expect() {
   case_no=$((case_no + 1))
   dir="$tmp/case-$case_no"
   mkdir -p "$dir"
   f="$dir/sample-feature-prd.md"
+  cp "$fixture" "$dir/parent-feature-prd.md"
   "$4" < "$fixture" > "$f"
   problems=''
   for shell in $shells; do
@@ -79,6 +81,26 @@ t_no_tasks() { sed '/^- \[ \] T/d'; }
 t_no_acs() { sed '/^- \*\*AC-/d'; }
 t_placeholder() { sed 's/^- PDF export\./- {{non-goal}}/'; }
 t_done_tasks() { sed 's/^- \[ \] T1:/- [x] T1:/'; }
+with_phase() { # with_phase <phase> <parent_prd>
+  sed -e "s#^approved_at: \(.*\)#approved_at: \1\\
+phase: $1\\
+parent_prd: $2#"
+}
+with_baseline() {
+  sed 's/^## 2\. User Flow & State Machine$/### Baseline \& Changes\
+\
+- **Builds on:** the parent PRD. Added: CSV export of credit notes.\
+\
+## 2. User Flow \& State Machine/'
+}
+t_phase2() { with_phase 2 docs/prd/parent-feature-prd.md | with_baseline; }
+t_phase2_no_parent_prd() { with_phase 2 none | with_baseline; }
+t_phase2_missing_parent() { sed 's/^approved_at: \(.*\)/approved_at: \1\
+phase: 2/' | with_baseline; }
+t_phase2_parent_not_found() { with_phase 2 docs/prd/nowhere-prd.md | with_baseline; }
+t_phase2_no_baseline() { with_phase 2 docs/prd/parent-feature-prd.md; }
+t_phase_text() { with_phase two none | with_baseline; }
+t_phase1_explicit() { with_phase 1 none; }
 
 echo "Validator (shells:$shells)"
 expect "valid PRD passes" 0 "PASS" t_identity
@@ -105,6 +127,13 @@ expect "task citing no criterion warns" 1 "cite no acceptance criterion" t_uncov
 expect "empty IMPLEMENTATION_TASKS fails" 1 "no checklist items" t_no_tasks
 expect "no acceptance criteria fails" 1 "no acceptance criteria found" t_no_acs
 expect "unfilled template placeholder fails" 1 "unfilled template placeholder" t_placeholder
+expect "phase 2 with a parent PRD passes" 0 "PASS" t_phase2
+expect "phase 2 of a feature shipped without a PRD passes" 0 "PASS" t_phase2_no_parent_prd
+expect "explicit phase 1 passes" 0 "PASS" t_phase1_explicit
+expect "phase 2 without parent_prd fails" 1 "needs parent_prd" t_phase2_missing_parent
+expect "phase 2 with a missing parent fails" 1 "parent_prd not found" t_phase2_parent_not_found
+expect "phase 2 without a baseline section fails" 1 "Baseline & Changes section" t_phase2_no_baseline
+expect "non-integer phase fails" 1 "phase must be an integer" t_phase_text
 
 echo
 echo "Validator CLI"
@@ -165,7 +194,7 @@ else
   fail "SKILL.md within the ~1,800-token budget" "$chars chars > 6900"
 fi
 
-for ref in references/interrogation-rubric.md references/domain-packs.md references/prd-template.md scripts/validate-prd.sh; do
+for ref in references/interrogation-rubric.md references/domain-packs.md references/prd-template.md references/next-phase.md scripts/validate-prd.sh; do
   if [ -f "$skill_dir/$ref" ]; then pass "skill ships $ref"; else fail "skill ships $ref" "missing"; fi
 done
 

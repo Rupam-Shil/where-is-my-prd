@@ -8,6 +8,7 @@ Rules:
 - **`feature_slug`** is kebab-case and matches the filename: `docs/prd/{{feature_slug}}-prd.md`.
 - **`interrogation_mode`** is one of `full_grill`, `fast_pass`, or `emergency_default_lock`.
 - **`approved_at`** is UTC ISO-8601 from `date -u +%Y-%m-%dT%H:%M:%SZ`.
+- **`phase`** is `1` for a new feature. For a follow-up phase it's `2`, `3`, …, with `parent_prd` set to the previous phase's PRD (or `none` if that phase shipped without one), a `-v<N>` slug, and the Baseline & Changes section filled in. See `next-phase.md`. For phase 1, delete that section.
 - **The state table** names all six states. Map feature-specific names onto them, as in `Loading (submitting)`. Write `N/A — <reason>` for a state that truly can't occur.
 - **Acceptance criteria** are testable statements (Given / When / Then, or a single observable assertion), numbered `AC-1`, `AC-2`, …
 - **Every `IMPLEMENTATION_TASKS` item** cites the AC ids it satisfies, and every AC is cited by at least one task.
@@ -23,6 +24,8 @@ spec_readiness_score: {{0-100}}
 p0_blockers_remaining: 0
 interrogation_mode: {{full_grill | fast_pass | emergency_default_lock}}
 approved_at: {{YYYY-MM-DDTHH:MM:SSZ}}
+phase: {{1 | 2 | 3 …}}
+parent_prd: {{none | docs/prd/<previous-phase>-prd.md}}
 generated_by: wheres-my-prd@1.0.0
 ---
 
@@ -37,6 +40,20 @@ generated_by: wheres-my-prd@1.0.0
 - **Solution:** {{one-sentence description of the feature}}
 - **Primary user:** {{segment}}
 - **Repo context:** {{stack, relevant existing models, routes, and libs found during recon}}
+
+### Baseline & Changes (phase 2+ only; delete for phase 1)
+
+- **Builds on:** {{parent PRD path, or "code as built, no earlier PRD"}}
+- **As built today:** {{what the shipped code does now, including any drift from the parent PRD}}
+
+| Change | What | Why |
+|---|---|---|
+| Added | {{…}} | {{…}} |
+| Changed | {{…}} | {{…}} |
+| Removed | {{… or "nothing"}} | {{…}} |
+
+- **Carried over unchanged:** {{earlier decisions that still hold; not re-asked}}
+- **Existing data and users:** {{what happens to records and in-flight users from earlier phases}}
 
 ## 2. User Flow & State Machine
 
@@ -106,7 +123,7 @@ generated_by: wheres-my-prd@1.0.0
 
 | Item | Decision | Source | Risk if wrong |
 |---|---|---|---|
-| {{gap}} | {{locked choice}} | {{user / recommended-default / emergency-lock / repo / open-risk}} | {{impact}} |
+| {{gap}} | {{locked choice}} | {{user / recommended-default / emergency-lock / repo / previous-phase / open-risk}} | {{impact}} |
 
 ## 9. Acceptance Criteria
 

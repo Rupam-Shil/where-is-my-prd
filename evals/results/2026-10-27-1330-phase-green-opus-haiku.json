@@ -1,0 +1,312 @@
+[
+  {
+    "id": "23-shipped-copy-tweak-should-not-trigger",
+    "model": "haiku",
+    "category": "Copy tweak on a shipped feature",
+    "pressure": "none",
+    "expected_trigger": false,
+    "expected_mode": null,
+    "triggered": false,
+    "violations": [],
+    "problems": [],
+    "notes": [],
+    "turns": [
+      {
+        "say": "change the referral card heading on the dashboard to \"Invite friends, earn $10\"",
+        "auto": false,
+        "expect": "edit",
+        "questions": 0,
+        "app_changed": [
+          "src/app/dashboard/page.tsx"
+        ],
+        "prd_valid": false,
+        "seconds": 13,
+        "reply": "I changed the referral card heading on the dashboard to \"Invite friends, earn $10\". The edit is in `src/app/dashboard/page.tsx` at line 27.\n\nThe old heading text still appears in `docs/prd/referral-system-prd.md`. I left the PRD alone since it's a spec document. Tell me if you want it updated to match.\n\nI haven't committed the change."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 0,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.0057,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "prd_file": null,
+    "passed": true
+  },
+  {
+    "id": "23-shipped-copy-tweak-should-not-trigger",
+    "model": "opus",
+    "category": "Copy tweak on a shipped feature",
+    "pressure": "none",
+    "expected_trigger": false,
+    "expected_mode": null,
+    "triggered": false,
+    "violations": [],
+    "problems": [],
+    "notes": [],
+    "turns": [
+      {
+        "say": "change the referral card heading on the dashboard to \"Invite friends, earn $10\"",
+        "auto": false,
+        "expect": "edit",
+        "questions": 0,
+        "app_changed": [
+          "src/app/dashboard/page.tsx"
+        ],
+        "prd_valid": false,
+        "seconds": 18,
+        "reply": "I changed the referral card heading in `src/app/dashboard/page.tsx:27` to \"Invite friends, earn $10\". I didn't build or run the app.\n\nTwo things to check before this ships:\n\n- **The new wording drops the friend's reward.** The old heading said both people get $10, and that's still how the system works. Read alone, \"earn $10\" sounds like only the person sending the invite gets paid.\n- **It can promise money the user won't get.** The person inviting only earns for the first 5 successful referrals each month. After that the friend still gets $10 but the inviter gets nothing, while the heading keeps saying \"earn $10\". The card's \"Rewards this month: n/5\" line does show the limit.\n\nThe PRD (`docs/prd/referral-system-prd.md:36`) still lists the old text, \"Invite a friend, you both get $10\", as the card's copy. I left the PRD alone; I can update it to match if you want to keep the new heading."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 0,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.2191,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "prd_file": null,
+    "passed": true
+  },
+  {
+    "id": "21-referral-phase-2",
+    "model": "haiku",
+    "category": "Follow-up phase (earlier PRD)",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "turn 2: asked before building"
+    ],
+    "turns": [
+      {
+        "say": "referrals v1 is live. let's do phase 2: tiered rewards ($10 for each of a referrer's first 3 friends, $20 per friend after that) and let referrers cash out their credit balance to their bank through Stripe Connect",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 55,
+        "reply": "**Baseline (from the v1 PRD and code)**\n- v1 is live: both sides get 1000 cents on signup, with a 5 rewarded referrals per UTC month cap per referrer. Grants are written to an append-only `CreditLedger`, and `User.credits` is a cached balance in cents.\n- `User.credits` has no consumer yet. Cash payouts and tiered rewards were explicit non-goals in v1.\n- The repo has `stripeCustomerId` and Stripe 17.4.0, but no Stripe Connect fields and no payout code.\n- Drift: `docs/prd/` doesn't exist in this repo. The v1 PRD is at `evals/fixtures/acme-saas-referrals/docs/prd/referral-system-prd.md`, so I'm treating that as the referrals codebase. Tell me if the live app is somewhere else.\n\n**Spec Readiness: 48/100 — BLOCKED (5 P0)**\nState 9/20 · Data 7/20 · Abuse 6/20 · Telemetry 14/20 · Rollout 12/20\n\nNothing is written and no code is started. The gate stays closed until these are answered.\n\n**1. [P0 BLOCKER · Data] Do tier counts use lifetime rewarded referrals, and do v1 rewards already granted count toward the first 3?**\n*Why it matters: a wrong count overpays or underpays real referrers on every grant, and existing v1 referrers would be misclassified.*\nA) Lifetime `rewarded` count, including v1 rewards; the 5/month cap stays as it is [Recommended Default]\nB) Lifetime count starting at phase 2 launch; v1 rewards are ignored\nC) Tier count resets monthly, like the cap\n\n**2. [P0 BLOCKER · Money] Does the tier apply only to the referrer's reward, and does the friend still get $10?**\n*Why it matters: if the friend's amount also changes, every grant amount and the referee-side ledger rows change.*\nA) Referrer gets $10 for friends 1–3 and $20 after; friend still gets $10 [Recommended Default]\nB) Both sides use the tier amount for the referrer's count\n\n**3. [P0 BLOCKER · Abuse] Is referral credit cashable immediately or after a hold, and are already-granted v1 credits cashable?**\n*Why it matters: once credit is cash, v1's guardrails (verified email, 5 signups per IP per day) are the only defense against farmed accounts, and fresh credit can be withdrawn before anyone notices.*\nA) 30-day hold per credit before it is cashable; v1 credits become cashable after the same hold, counted from their grant date [Recommended Default]\nB) No hold; cash-out only after Connect identity verification\nC) Hold applies to new credits only; v1 credits are cashable now\n\n**4. [P0 BLOCKER · Data] Which Stripe Connect account type, and which countries and currencies may cash out?**\n*Why it matters: the account type decides who holds KYC data and what onboarding code exists. Switching later means rebuilding onboarding and migrating account IDs.*\nA) Express accounts, USD, US bank accounts at launch; Stripe collects identity; tax-form (1099) ownership is confirmed with tax counsel before launch [Recommended Default]\nB) Standard accounts (referrers have their own Stripe login), USD, US\nC) Custom accounts (we collect KYC ourselves), any country\n\n**5. [P0 BLOCKER · State] What is the minimum payout, and how do pending and failed transfers settle the ledger?**\n*Why it matters: without a debit inside a locked transaction, two concurrent cash-outs can spend the same balance twice. A failed transfer that isn't reversed leaves the user with no money and no balance.*\nA) $25 minimum. In one locked transaction, write a `Payout` row (requested → paid/failed) and a `CreditLedger` debit; use the payout ID as the Stripe idempotency key; a failed transfer posts a reversal row, driven by Connect webhooks [Recommended Default]\nB) $10 minimum, same mechanics\nC) $25 minimum, with manual review of every payout\n\nReply like `1A 2A 3A 4A 5A`, or `defaults` to accept every recommendation.\n\nOnce these are answered, I'll write `docs/prd/referral-system-v2-prd.md` (phase 2, `parent_prd` pointing to the v1 PRD) and validate it. I'll then add phase-2 P1 defaults without asking: a separate `referral_payouts_enabled` flag that fails closed, `tier` on the `referral_rewarded` event (keeping existing event names), and an unchanged monthly cap."
+      },
+      {
+        "say": "defaults",
+        "auto": false,
+        "expect": "build",
+        "questions": 0,
+        "app_changed": [],
+        "prd_valid": true,
+        "seconds": 130,
+        "reply": "The phase-2 PRD is written and passes validation (86/100, 0 P0). I haven't started implementation yet, because the referrals code's location is still unresolved.\n\n**What's locked** (all recommended defaults, per your `defaults`):\n- **Tier counting:** lifetime rewarded referrals, including v1 rewards. Friends 1–3 pay the referrer $10; friend 4 and later pay $20. The 5/month cap still applies, and capped referrals don't count toward tiers.\n- **Referee:** still $10 in all cases.\n- **Cash-out:** Stripe Connect Express, US and USD only, $25 minimum. Credit is held 30 days, and existing v1 credit follows the same hold from its grant date.\n- **Payout safety:** one payout in flight per user (enforced by a partial unique index), a locked ledger debit, Stripe idempotency keys derived from the payout ID, reversal on failure, and a cron retry with a 24h timeout.\n- **Flags:** `referral_tiers_enabled` and `referral_payouts_enabled`, both fail closed and default off.\n\n**Where it is:** `<repo>/docs/prd/referral-system-v2-prd.md`\n\n**Two things I couldn't do:**\n- I tried to write the PRD into the fixture at `evals/fixtures/acme-saas-referrals/docs/prd/`, next to the v1 PRD. The write was denied as a sensitive file, so I didn't retry. I also didn't add the `superseded_by` pointer to the v1 PRD, which was part of the same denied path. You'll need to add that line by hand if you want it.\n- Implementation hasn't started. The PRD's nine tasks (T1–T9) touch the referrals app, and I don't know where that repo lives. The only referrals code I found is the fixture, which is the blocked path. Tell me the repo path, or confirm that the fixture is the right target and that I may write there, and I'll start with T1 (migration) and work down the list."
+      }
+    ],
+    "user_turns": 2,
+    "turns_to_lock": 2,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "next-phase.md",
+      "prd-template.md"
+    ],
+    "cost": 0.0762,
+    "mode": "full_grill",
+    "score": "86",
+    "prd_valid": true,
+    "prd_file": "docs/prd/referral-system-v2-prd.md",
+    "passed": true
+  },
+  {
+    "id": "22-billing-v2-no-prd",
+    "model": "haiku",
+    "category": "Follow-up phase (no earlier PRD)",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [],
+    "turns": [
+      {
+        "say": "billing v2: add annual plans at 20% off and let users switch between monthly and annual from the billing page",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 51,
+        "reply": "**Baseline (from the repo)**\n- `/billing` lists the user's `Subscription` rows as `priceId: status` (`src/app/billing/page.tsx`). There is no plan picker and no checkout.\n- `User.stripeCustomerId` exists. `Subscription` has only `priceId` and `status`: no interval, amount, or Stripe subscription ID.\n- `stripe@17.4.0` is installed, but nothing in `src/` uses it. There is no price config and no webhook handler.\n- No `docs/prd/` and no v1 PRD, so this PRD will have `parent_prd: none`.\n- Drift: the billing page reads `user.subscriptions` even when the lookup returns null, so an unknown email crashes the page. The repo also has no feature-flag library.\n\n**Spec Readiness: 22/100 — BLOCKED (4 P0)**\nState 4/20 · Data 6/20 · Abuse 6/20 · Telemetry 2/20 · Rollout 4/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 · Stripe (unused) · Upstash ratelimit · PostHog\n\n**1. [P0 BLOCKER · Money] When does a plan switch take effect?**\nWhy it matters: an immediate switch with proration creates charges and credits on the next invoice. Getting that wrong double-bills or leaves credits owed.\nA) Both directions take effect at period end. No money moves at switch time. [Recommended Default]\nB) Monthly→annual is immediate with a prorated charge. Annual→monthly takes effect at period end.\nC) Both directions are immediate, prorated by Stripe.\n\n**2. [P0 BLOCKER · Money] How is the annual plan billed?**\nWhy it matters: \"20% off\" can mean one yearly invoice or 12 monthly charges at 80%. Those are different products, and they need different Stripe Prices and different renewal logic.\nA) One yearly invoice at 12 × monthly × 0.8, stored as integer minor units with an explicit currency. Each annual Price is a separate Stripe Price. [Recommended Default]\nB) Monthly installments at 80% of monthly price, billed on a monthly interval.\n\n**3. [P0 BLOCKER · Data] Is billing v1 live with paying customers, and where is its Stripe checkout and webhook code?**\nWhy it matters: if Stripe already holds subscriptions, a schema or webhook change can drift the local `Subscription` rows from what Stripe charges, and the code that writes those rows isn't in this repo.\nA) Live. Stripe is the source of truth. This phase adds nullable columns only, and no switch ships until you share the v1 webhook code. [Recommended Default]\nB) Pre-launch, with no paying users. This phase owns the Stripe sync and can change `Subscription` freely.\n\n**4. [P0 BLOCKER · Abuse] Which subscription states may switch plans?**\nWhy it matters: switching during a failed payment (`past_due`, `incomplete`) can create a charge on an account that is already in dunning, or grant annual access without payment.\nA) Only `active` subscriptions can switch. Other states show \"Fix your payment method\" with a link to the Stripe billing portal. The server rejects the request. [Recommended Default]\nB) Any non-canceled state can switch.\n\n**5. [P1 DESIGN CHOICE · Rollout] How is the feature gated?**\nWhy it matters: the repo has no flag system. Without a kill switch, a bad switch flow can't be turned off without a deploy.\nA) Server-side env flag `BILLING_ANNUAL_ENABLED`, default off. The switch and annual Prices are hidden when it's off. [Recommended Default]\nB) PostHog feature flag, read on the server.\n\nAssumed defaults if you accept everything (P1, not asked): switch requests limited to 5 per user per day via `lib/ratelimit.ts`; events `billing_plan_switch_started|completed|failed` sent through `posthog-node`, carrying `user_id`, `from_interval`, `to_interval`, and `error_code`; the billing page's null-user crash fixed in this phase.\n\nReply like `1A 2A 3: live, I'll share the webhook code 4A 5A`, or `defaults` to accept every recommendation. Nothing has been written yet, and the gate stays closed until the P0s are answered."
+      },
+      {
+        "say": "defaults",
+        "auto": false,
+        "expect": "build",
+        "questions": 0,
+        "app_changed": [
+          "prisma/schema.prisma",
+          "src/app/billing/page.tsx",
+          "src/app/api/billing/portal/route.ts",
+          "src/app/api/billing/switch/route.ts",
+          "src/app/api/billing/webhook/route.ts",
+          "src/app/billing/switch-button.tsx",
+          "src/lib/plans.ts",
+          "src/lib/stripe.ts"
+        ],
+        "prd_valid": true,
+        "seconds": 171,
+        "reply": "Billing v2 is implemented and the PRD is at `docs/prd/billing-v2-prd.md`. It validates at 86/100 with zero P0s. I haven't typechecked or run it, and nothing is committed.\n\n**What I built** (all behind `BILLING_ANNUAL_ENABLED`, which defaults off)\n- **Pricing** (`src/lib/plans.ts`): monthly is $10.00 and annual is $96.00 (12 × monthly × 0.8), in integer cents. The client never sends a price ID.\n- **Schema** (`prisma/schema.prisma`): four nullable `Subscription` columns and a new `StripeEvent` table for webhook dedupe.\n- **Switch endpoint** (`POST /api/billing/switch`): checks auth and the flag, rate-limits to 5 requests per day, and rejects any subscription that isn't `active`. It schedules the change for period end through a Stripe subscription schedule, so no proration or charge happens at request time. Repeat requests are idempotent.\n- **Webhook** (`POST /api/billing/webhook`): verifies the signature, dedupes on the Stripe event ID inside the same transaction as the state change, and clears the pending switch once Stripe reports the new price.\n- **Billing page** (`src/app/billing/page.tsx`, `switch-button.tsx`): shows the plan picker, the pending switch, and the empty, unknown-plan, and error states. It also fixes the null-user crash. Non-active accounts get a billing-portal link (`/api/billing/portal`).\n\n**Not verified**\n- **Typecheck:** the repo has no `tsconfig.json` or lockfile, and the sandbox blocked the copy I needed to typecheck in a scratch directory. Run `npx tsc --noEmit` after adding a tsconfig.\n- **Migration:** I edited the schema but didn't generate a migration file. Run `npm run db:migrate`.\n- **Tests:** the repo has no test runner, so none of the 18 acceptance criteria have tests yet.\n\n**Before turning the flag on**\n- Share the v1 Stripe checkout and webhook code. If it already has a webhook handler, two handlers could apply the same change. The PRD makes this a launch prerequisite.\n- Set `STRIPE_PRICE_MONTHLY`, `STRIPE_PRICE_ANNUAL`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_SECRET_KEY`, create the annual Stripe Price, and enable subscription schedules on the account.\n- PostHog events are captured without a flush. On serverless, events can be dropped when the function ends.\n\n**Open items**\n- The success KPI has no target or window yet.\n- Several P1 defaults (the 5% failure alert, all-or-nothing cohorts, and cancel-before-switch handling) weren't confirmed by you. They're listed in the PRD's Open Risks table."
+      }
+    ],
+    "user_turns": 2,
+    "turns_to_lock": 2,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md",
+      "next-phase.md",
+      "prd-template.md"
+    ],
+    "cost": 0.0736,
+    "mode": "full_grill",
+    "score": "86",
+    "prd_valid": true,
+    "prd_file": "docs/prd/billing-v2-prd.md",
+    "passed": true
+  },
+  {
+    "id": "22-billing-v2-no-prd",
+    "model": "opus",
+    "category": "Follow-up phase (no earlier PRD)",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [],
+    "turns": [
+      {
+        "say": "billing v2: add annual plans at 20% off and let users switch between monthly and annual from the billing page",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 49,
+        "reply": "**Baseline (no PRD exists for billing v1; built from code):**\n- Next.js 15 + Prisma/Postgres + NextAuth v5 (Google, DB sessions) + `stripe@17` + Upstash ratelimit + PostHog (`posthog-node`), no `docs/prd/`.\n- `Subscription` has only `status`, `priceId` and `createdAt`. There's no `stripeSubscriptionId`, interval, period end or unique key, so there's nothing to tie a row to Stripe.\n- There's no Stripe webhook route and no checkout route. The repo has no code that writes `Subscription` rows, so the source of truth is unclear.\n- `src/app/billing/page.tsx` is read-only (`priceId: status` list), and it crashes on `user.subscriptions` when `user` is null. I'll fix that as part of this change.\n- The repo has no feature-flag system. PostHog flags are available through the existing client.\n\n```\nSpec Readiness: 28/100 — BLOCKED (4 P0)\nState 6/20 · Data 4/20 · Abuse 6/20 · Telemetry 6/20 · Rollout 6/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 · Stripe 17 · Upstash ratelimit · PostHog\n```\n\n1. **[P0 BLOCKER] Monthly → annual: when does the switch happen and what gets charged?**\n   Why it matters: if this is guessed wrong, users get double-charged for overlapping periods or get the annual plan without paying.\n   A) Switch immediately. Stripe invoices the annual price now, minus credit for the unused part of the month (`proration_behavior: always_invoice`, `payment_behavior: pending_if_incomplete`). If the charge fails, the user stays on monthly. [Recommended Default]\n   B) Switch at the end of the current month through a Stripe Subscription Schedule, so nothing is charged until then.\n   C) Switch immediately, with the proration added to the next invoice instead of charged now.\n\n2. **[P0 BLOCKER] Annual → monthly: refund, credit, or wait?**\n   Why it matters: switching mid-term without a rule either owes users cash refunds or quietly takes months they've already paid for.\n   A) Schedule the switch for the end of the annual term with no refund. The page shows \"Switches to monthly on <date>\" with a Cancel option. [Recommended Default]\n   B) Switch immediately and turn the unused annual value into account credit for future invoices.\n   C) Switch immediately and refund the prorated amount in cash.\n\n3. **[P0 BLOCKER] Source of truth and schema.** `Subscription` can't identify a Stripe subscription, and there's no webhook.\n   Why it matters: if the page reads stale DB rows while Stripe is changing state, users see the wrong plan, and a failed DB write after a successful charge leaves the two out of sync.\n   A) Additive migration: nullable `stripeSubscriptionId @unique`, `interval` (`month|year`), `currentPeriodEnd` (UTC), `pendingInterval`, `pendingChangeAt`. Add a new `POST /api/stripe/webhook` that verifies the signature and dedupes on a `StripeEvent(id @unique)` table, plus a one-time backfill script from Stripe for existing rows. [Recommended Default]\n   B) Make no schema changes and read the subscription live from Stripe on every billing page load. This is simpler, but the page goes down when Stripe does.\n\n4. **[P0 BLOCKER] How is the 20% discount set up, and what happens to existing discounts?**\n   Why it matters: if the client sends a `priceId` or coupons stack, people can buy any price or get more than 20% off.\n   A) Create a separate annual Stripe Price for each plan at exactly `round(monthly_cents × 12 × 0.8)`, using integers in cents. The mapping lives in a server-side config, and the client sends only `{ interval }`. Any existing coupon on the subscription is removed when it moves to annual, so discounts don't stack. [Recommended Default]\n   B) Same separate prices, but existing coupons carry over.\n   C) Put a 20%-off coupon on the existing price, billed yearly.\n\n5. **[P1 DESIGN CHOICE] Rollout.**\n   Why it matters: changes to money flows need a kill switch that doesn't strand users mid-switch.\n   A) PostHog flag `billing_annual_plans`: internal users, then 10%, then 100%. With the flag off, the toggle is hidden and the switch endpoint returns 404. Existing annual subscriptions and switches already scheduled still go through. [Recommended Default]\n   B) Launch to everyone at once, with an env-var kill switch.\n\n**Assumed defaults (locked unless you object):**\n- The switch endpoint is limited to 5 requests per hour per user, using Upstash.\n- Each switch uses a Stripe idempotency key of `subId:switch:targetInterval:currentPeriodEnd`. The button is disabled while the request is pending.\n- Only the session user's own subscription can be changed.\n- Analytics keep the existing event names and add `billing_interval_switch_{viewed,started,completed,failed}`. Properties are `subscription_id`, `from`, `to`, `amount_cents` and `error_code`, with no email.\n- The KPI is 15% of paying monthly users switching to annual within 90 days.\n- If the webhook fails or Stripe is down, the page shows the last synced state and a \"can't change plan right now\" error. Nothing is half-written.\n\nReply like `1A 2A 3A 4A 5A`, or `defaults` to accept every recommendation. Once you answer, I'll write the PRD and start building."
+      },
+      {
+        "say": "defaults",
+        "auto": false,
+        "expect": "build",
+        "questions": 0,
+        "app_changed": [
+          "prisma/schema.prisma",
+          "src/app/billing/page.tsx",
+          "prisma/migrations/20261027000000_billing_v2_annual_plans/migration.sql",
+          "scripts/backfill-stripe-subscriptions.ts",
+          "src/app/api/billing/interval/route.ts",
+          "src/app/api/stripe/webhook/route.ts",
+          "src/app/billing/interval-toggle.tsx",
+          "src/lib/billing-sync.ts",
+          "src/lib/flags.ts",
+          "src/lib/plans.ts",
+          "src/lib/stripe.ts"
+        ],
+        "prd_valid": true,
+        "seconds": 286,
+        "reply": "Billing v2 is written: annual plans at exactly 20% off, and users can switch between monthly and annual on `/billing`. None of it has been compiled or run, because the repo has no `node_modules` or `tsconfig.json`. Nothing is committed yet.\n\nThe spec is in `docs/prd/billing-v2-prd.md` (your answers locked in, validator passes). How it works:\n\n- **Monthly → annual:** happens immediately. Stripe charges the annual price now, minus credit for the unused part of the month. If the charge fails, the subscription stays monthly and the user sees a \"card declined\" message. Any existing coupon is removed in the same update, so discounts don't stack on the 20%.\n- **Annual → monthly:** waits until the paid year ends, with no refund. The page shows \"Switches to monthly on <date>\" with a \"Keep annual\" button that cancels it. Cancelling still works when the feature flag is off.\n- **Price check:** before any switch, the server confirms in Stripe that the annual price is exactly `round(monthly × 12 × 0.8)` in the same currency. If it isn't, the switch is refused. The browser only ever sends the subscription id and the target interval, never a price.\n- **Source of truth:** Stripe. A new `POST /api/stripe/webhook` checks the signature, ignores duplicate events, and re-reads the subscription from Stripe so the database matches. The schema change only adds new columns (all nullable) and a `StripeEvent` table.\n- **Guardrails:** users can only change their own subscription; 5 changes per user per hour; the PostHog flag `billing_annual_plans` (off by default) hides the switch; and four `billing_interval_switch_*` events with no email in them.\n- **Billing page:** it no longer crashes when there's no signed-in user or no matching account. Signed-out users go to sign-in, and users without a subscription see an empty state.\n\nBefore launch:\n1. **Migration:** the repo had no `prisma/migrations/` folder before, so mine is the first one. If production was set up with `db push`, record a baseline migration first or `migrate deploy` will fail.\n2. **Stripe setup:** create the annual prices and set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and `STRIPE_PLAN_PRICES` (JSON list of `{key, month, year}`). Then point a webhook at `/api/stripe/webhook` for the `customer.subscription.*` and `subscription_schedule.*` events.\n3. **Backfill:** run `npx tsx scripts/backfill-stripe-subscriptions.ts`. Until existing rows are linked to Stripe, those users won't see the switch button.\n4. **Testing:** install dependencies and run `tsc`, then test both directions in Stripe test mode, including a declined card. There are no automated tests in the repo yet.\n5. **Rollout:** create the PostHog flag and turn it on for internal users, then 10%, then everyone."
+      }
+    ],
+    "user_turns": 2,
+    "turns_to_lock": 2,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md",
+      "next-phase.md",
+      "prd-template.md"
+    ],
+    "cost": 1.9894,
+    "mode": "full_grill",
+    "score": "92",
+    "prd_valid": true,
+    "prd_file": "docs/prd/billing-v2-prd.md",
+    "passed": true
+  },
+  {
+    "id": "21-referral-phase-2",
+    "model": "opus",
+    "category": "Follow-up phase (earlier PRD)",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [],
+    "turns": [
+      {
+        "say": "referrals v1 is live. let's do phase 2: tiered rewards ($10 for each of a referrer's first 3 friends, $20 per friend after that) and let referrers cash out their credit balance to their bank through Stripe Connect",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 66,
+        "reply": "Baseline is read: the v1 PRD, the schema, `referral.ts`, auth and flags. Here's the scorecard. I haven't written any code or PRD yet.\n\n**Baseline (what phase 2 builds on)**\n- **What v1 does today:** when a friend signs up, both people get a flat 1000 cents through `processNewUser` in `src/lib/referral.ts`. Each referrer can earn at most 5 rewards per UTC month (`MONTHLY_CAP`), enforced under a `FOR UPDATE` lock. Over the cap, the friend still gets paid but the referrer gets nothing (`referrer_capped`).\n- **Money storage:** amounts are stored in `CreditLedger`, an append-only ledger in integer cents. It has a unique key on `(referralId, role)` to stop double grants. `User.credits` is a cached balance. Nothing spends credits today.\n- **Stripe:** `stripe@17.4.0` is installed but no code uses it. There's no webhook route, no Connect setup, and nothing on `User` links to a connected account.\n- **Flags:** `referrals_enabled` is a PostHog flag that turns off if PostHog can't be reached. The v1 PRD listed cash payouts, tiers and clawbacks as non-goals, so phase 2 has to settle all three.\n- **Mismatch with the code:** every v1 `IMPLEMENTATION_TASKS` box is still unchecked, but the code has shipped. That doesn't block anything; I'll treat the code as the source of truth.\n\n```\nSpec Readiness: 42/100 — BLOCKED (5 P0)\nState 8/20 · Data 8/20 · Abuse 4/20 · Telemetry 12/20 · Rollout 10/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 · Stripe 17 (unused) · Upstash · PostHog\n```\n\n1. **[P0 BLOCKER] What counts as a referrer's \"first 3 friends,\" and do the new rates change past rewards?**\n   Why it matters: a referrer who already has 4 or more rewarded referrals from v1 would get $20 right away, or would have to be paid back pay for earlier referrals, and the 5/month cap makes \"friend #N\" ambiguous.\n   A) Count lifetime `rewarded` referrals, including v1. The 1st–3rd pay $10, the 4th and later pay $20. Nothing is paid retroactively. Capped referrals don't count toward the tier. The 5/month cap stays, and the friend's reward stays a flat $10. [Recommended Default]\n   B) Start the count from zero at phase 2 launch, ignoring v1 history.\n   C) Same as A, but also pay a one-time $10 top-up for each past referral beyond the 3rd.\n\n2. **[P0 BLOCKER] Which part of the balance can be cashed out?**\n   Why it matters: `User.credits` also holds the $10 friend sign-up bonus. If the whole balance is cashable, every new account becomes a $10 cash withdrawal, which makes it worth farming accounts.\n   A) Only credit earned as a referrer (ledger `role = referrer`), minus earlier payouts. The friend bonus stays in the account and can't be withdrawn. A payout writes a negative ledger row and lowers `credits`. [Recommended Default]\n   B) The whole `User.credits` balance.\n\n3. **[P0 BLOCKER] When does earned credit become withdrawable, and what limits apply?**\n   Why it matters: v1's anti-farming checks were designed for credit that can't leave the product. Once it can become cash, a farming ring can withdraw before anyone notices.\n   A) Each reward becomes withdrawable 30 days after it's earned, and only if the friend's account still exists. Minimum payout $25. At most 1 payout per 7 days. Payouts over $500 in a rolling 30 days are held for manual review. [Recommended Default]\n   B) 14-day hold, $10 minimum, no review.\n   C) Payouts are available immediately, with only a minimum amount.\n\n4. **[P0 BLOCKER] How should Stripe Connect be set up, and who handles identity checks and taxes?**\n   Why it matters: paying people where we can't, or skipping tax reporting, creates legal exposure, and switching Connect account types later means re-onboarding everyone.\n   A) Express accounts, US and USD only, with Stripe-hosted onboarding (Stripe handles identity checks and bank details; we store only `stripeConnectAccountId`). Stripe files the 1099s. Updating the Terms is a launch prerequisite. [Recommended Default]\n   B) Express accounts in several countries, paid in USD with Stripe converting currency.\n   C) Custom accounts with our own onboarding UI.\n\n5. **[P0 BLOCKER] How should a payout request deal with Stripe failures and retries?**\n   Why it matters: if the database and Stripe disagree, the user is either paid twice or debited without being paid.\n   A) One transaction locks the user row, checks the withdrawable amount, writes a `Payout(pending)` row and a negative ledger row. Then a Stripe Transfer is sent with idempotency key `payout:<id>`. A new signature-verified `/api/stripe/webhook` route with `event.id` dedupe handles failures (`transfer.reversed`, `payout.failed`): it marks the payout `failed` and writes a matching positive ledger row to restore the balance. A daily job compares our records with Stripe. [Recommended Default]\n   B) Same flow, but without webhooks: poll Stripe in a cron job.\n\n**Assumed defaults (change any of these in your reply):**\n- **Flags:** two new PostHog flags, `referral_tiers_enabled` and `referral_payouts_enabled`. Both default off and turn off if PostHog is unreachable. With tiers off, rewards fall back to v1's flat $10. With payouts off, the cash-out button is hidden and new requests are rejected, but payouts already in flight still finish.\n- **Telemetry:** v1 event names stay the same, and `referral_rewarded` gains a `tier` field. New events: `payout_onboarding_started/completed`, `payout_requested/paid/failed/held`.\n- **Rate limits:** 5 cash-out requests per user per hour.\n- **Deleted accounts:** if a referrer deletes their account, any withdrawable balance is forfeited.\n\nReply like `1A 2A 3: 14-day hold 4A 5A`, or `defaults` to accept every recommendation. After that I'll write `docs/prd/referral-system-v2-prd.md` and start building."
+      },
+      {
+        "say": "defaults",
+        "auto": false,
+        "expect": "build",
+        "questions": 0,
+        "app_changed": [
+          "prisma/schema.prisma",
+          "src/app/dashboard/page.tsx",
+          "src/lib/flags.ts",
+          "src/lib/referral.ts",
+          "scripts/payout-review.ts",
+          "src/app/api/cron/payouts-reconcile/route.ts",
+          "src/app/api/payouts/guard.ts",
+          "src/app/api/payouts/onboarding/route.ts",
+          "src/app/api/payouts/route.ts",
+          "src/app/api/stripe/webhook/route.ts",
+          "src/app/dashboard/payout-panel.tsx",
+          "src/lib/payouts.ts",
+          "src/lib/stripe.ts"
+        ],
+        "prd_valid": true,
+        "seconds": 383,
+        "reply": "Phase 2 is written, but none of it has been run or type-checked. The repo has no `node_modules`, no `tsconfig` and no test runner, so it hasn't been compiled, executed, or tried against Stripe test mode. Nothing is committed.\n\nThe spec is in `docs/prd/referral-system-v2-prd.md`, built on your `defaults` answer; the PRD check passes at 88/100. The v1 PRD's only change is a `superseded_by` pointer to the new one.\n\n**Tiered rewards** (`src/lib/referral.ts`):\n- The referrer earns $10 for each of their first 3 rewarded friends and $20 for each one after that. The count is all-time and includes v1 referrals.\n- Nothing is paid retroactively, the friend still gets a flat $10, and the 5-per-month cap is unchanged.\n- The amount is worked out inside the existing row lock, so two friends signing up at the same moment can't both be paid at the lower rate.\n- It's behind a new `referral_tiers_enabled` flag. With the flag off, everyone gets the old flat $10.\n\n**Cash-out** (`src/lib/payouts.ts`):\n- Only money earned as a referrer can be withdrawn, and only once it's 30 days old. The friend's $10 signup bonus stays in the account.\n- Limits: $25 minimum, one payout every 7 days, and anything over $500 in a rolling 30 days is held for manual review.\n- Payouts go to a Stripe Express account (US and USD only).\n- The balance is debited and the payout recorded before any money is sent to Stripe. Each transfer has a fixed idempotency key, so a retry can't pay twice. If a payout fails, the balance is restored exactly once.\n- New routes: `/api/payouts` (balance and cash-out), `/api/payouts/onboarding` (Stripe setup link), `/api/stripe/webhook` (signature-checked, duplicate events ignored) and `/api/cron/payouts-reconcile` (retries stuck payouts).\n- `scripts/payout-review.ts` lists, approves or rejects held payouts.\n- The dashboard shows tier progress and a cash-out panel, behind a new `referral_payouts_enabled` flag.\n\n**Two changes from what I proposed:**\n- **\"Paid\" means the transfer to the user's Stripe account succeeded.** Stripe can batch several transfers into one bank deposit, so they don't match our payouts one-to-one. If that bank deposit fails, the money stays in their Stripe balance and Stripe retries once they fix their bank details. I record that as an analytics event and don't restore the credit.\n- **The webhook needs two signing secrets.** Transfer reversals come from your main Stripe account and setup/bank events come from the Connect side: `STRIPE_WEBHOOK_SECRET` and `STRIPE_CONNECT_WEBHOOK_SECRET`. The PRD now lists both.\n\n**Still to do before launch:**\n- Install dependencies and run `npm run db:migrate`. The schema change only adds columns and tables. v1 has no migrations folder in the repo, so I didn't write the migration SQL by hand.\n- No tests yet, so tasks T3, T4 and T6 are left unchecked in the PRD. If you want the PRD's tests, a runner such as vitest needs adding first.\n- In Stripe: turn on Connect (Express, US) with 1099 tax reporting, put enough money in your platform balance to cover transfers, and register both webhook endpoints.\n- Set up something to call the reconcile route every 15 minutes with `CRON_SECRET`. The repo has no scheduler, and without one, payouts interrupted by a Stripe outage stay stuck.\n- Set up the PostHog alerts (task T10) and update the Terms to cover cash-out, review holds, and forfeiting the balance if a referrer deletes their account."
+      }
+    ],
+    "user_turns": 2,
+    "turns_to_lock": 2,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md",
+      "next-phase.md",
+      "prd-template.md"
+    ],
+    "cost": 2.708,
+    "mode": "full_grill",
+    "score": "88",
+    "prd_valid": true,
+    "prd_file": "docs/prd/referral-system-v2-prd.md",
+    "passed": true
+  }
+]

@@ -30,7 +30,7 @@ import threading
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-FIXTURE = os.path.join(ROOT, "evals", "fixtures", "acme-saas")
+FIXTURES = os.path.join(ROOT, "evals", "fixtures")
 VALIDATOR = os.path.join(ROOT, "skills", "wheres-my-prd", "scripts", "validate-prd.sh")
 RESULTS_DIR = os.path.join(ROOT, "evals", "results")
 
@@ -97,16 +97,32 @@ def run_claude(prompt, cwd, model, session, user_settings, timeout):
     return turn
 
 
-def prd_state(cwd):
-    """Return (valid, frontmatter dict) for the PRD(s) under docs/prd/."""
+def read_prds(cwd):
+    """Map docs/prd/*-prd.md paths to their text."""
     prd_dir = os.path.join(cwd, "docs", "prd")
-    files = sorted(f for f in os.listdir(prd_dir) if f.endswith("-prd.md")) if os.path.isdir(prd_dir) else []
-    if not files:
+    if not os.path.isdir(prd_dir):
+        return {}
+    return {f"docs/prd/{f}": open(os.path.join(prd_dir, f)).read()
+            for f in sorted(os.listdir(prd_dir)) if f.endswith("-prd.md")}
+
+
+def prd_body(text):
+    parts = text.split("---", 2) if text.startswith("---") else []
+    return parts[2] if len(parts) == 3 else text
+
+
+def prd_state(cwd, baseline):
+    """Return (valid, frontmatter dict) for PRDs written during the scenario.
+    PRDs that were already in the fixture (an earlier phase) never open the gate."""
+    current = read_prds(cwd)
+    new = [p for p in current if p not in baseline]
+    changed = [p for p in current if p in baseline and current[p] != baseline[p]]
+    candidates = new or changed
+    if not candidates:
         return False, {}
-    result = sh(["sh", VALIDATOR, "-q", prd_dir], cwd)
-    meta = {"file": "docs/prd/" + files[-1], "validator": result.stdout.strip()}
-    with open(os.path.join(prd_dir, files[-1])) as fh:
-        text = fh.read()
+    result = sh(["sh", VALIDATOR, "-q", *candidates], cwd)
+    meta = {"file": candidates[-1], "validator": result.stdout.strip()}
+    text = current[candidates[-1]]
     if text.startswith("---"):
         for line in text.split("---", 2)[1].splitlines():
             if ":" in line:
@@ -136,9 +152,10 @@ def question_metrics(text):
 def run_scenario(scenario, model, args):
     sid = scenario["id"]
     workdir = tempfile.mkdtemp(prefix=f"wmp-{sid[:2]}-{model}-", dir=args.workdir_root)
-    shutil.copytree(FIXTURE, workdir, dirs_exist_ok=True)
+    shutil.copytree(os.path.join(FIXTURES, scenario.get("fixture", "acme-saas")), workdir, dirs_exist_ok=True)
     git(workdir, "init", "-q")
     commit(workdir, "fixture")
+    baseline = read_prds(workdir)
 
     res = {"id": sid, "model": model, "category": scenario["category"], "pressure": scenario["pressure"],
            "expected_trigger": scenario["trigger"], "expected_mode": scenario["mode"],
@@ -173,11 +190,11 @@ def run_scenario(scenario, model, args):
             if path.startswith(".."):
                 continue
             if PRD_PATH.match(path):
-                prd_seen = True
+                prd_seen = prd_seen or path not in baseline
             elif not prd_seen:
                 early_writes.append(path)
 
-        valid, meta = prd_state(workdir)
+        valid, meta = prd_state(workdir, baseline)
         app_changed = [p for p in changed_files(workdir) if not p.startswith("docs/prd/")]
         questions, format_ok = question_metrics(turn["text"])
         if res["first_turn_questions"] is None:
@@ -240,14 +257,29 @@ def run_scenario(scenario, model, args):
                              "reply": turn["text"].replace(workdir, "<repo>").replace(ROOT, "<wheres-my-prd>")})
         commit(workdir, f"turn {res['user_turns']}")
 
-    valid, meta = prd_state(workdir)
+    valid, meta = prd_state(workdir, baseline)
     res["mode"] = meta.get("interrogation_mode")
     res["score"] = meta.get("spec_readiness_score")
     res["prd_valid"] = valid
+    res["prd_file"] = meta.get("file")
     if res["triggered"] != scenario["trigger"]:
         res["problems"].append(f"trigger: expected {scenario['trigger']}, got {res['triggered']}")
     if scenario["mode"] and res["mode"] != scenario["mode"] and not truncated:
         res["problems"].append(f"mode: expected {scenario['mode']}, got {res['mode']}")
+
+    # Follow-up phases: a new, linked PRD, and the earlier PRD's body left as the record of what shipped.
+    current = read_prds(workdir)
+    for path, text in baseline.items():
+        if path not in current or prd_body(current[path]) != prd_body(text):
+            res["problems"].append(f"rewrote the earlier PRD {path}")
+    if scenario.get("phase") and not truncated:
+        if res["prd_file"] in baseline:
+            res["problems"].append("edited the earlier PRD instead of writing a new one")
+        if meta.get("phase") != str(scenario["phase"]):
+            res["problems"].append(f"phase: expected {scenario['phase']}, got {meta.get('phase')}")
+        parent = os.path.basename(meta.get("parent_prd") or "")
+        if parent != os.path.basename(scenario["parent"]):
+            res["problems"].append(f"parent_prd: expected {scenario['parent']}, got {meta.get('parent_prd')}")
     if not res["format_ok"]:
         res["problems"].append("a question lacked 'Why it matters' or a recommended default")
     res["refs_loaded"] = sorted(set(res["refs_loaded"]))

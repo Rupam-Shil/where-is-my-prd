@@ -1,25 +1,25 @@
 ---
 name: wheres-my-prd
-description: Use BEFORE writing any code whenever the user asks to build, implement, add, or scaffold a new feature, page, endpoint, module, integration, or user flow and no locked PRD for it exists in docs/prd/, even a small one, and even when they are in a hurry or say "just build it" or "no questions" (the skill then locks its assumptions in writing instead of asking). Also use when they paste a rough idea, user story, Slack thread, or draft PRD for review or scoping, or say "where's my prd", "grill my spec", "stress-test this PRD", or "scope this feature". Not for bug fixes with repro steps, copy tweaks, formatting, dependency bumps, or read-only questions.
+description: Use BEFORE writing any code whenever the user asks to build, implement, add, or scaffold a new feature, page, endpoint, module, integration, or user flow, or a new phase of a shipped one (phase 2, v2), and no locked PRD for it exists in docs/prd/, even a small one, and even when they are in a hurry or say "just build it" or "no questions" (the skill then locks its assumptions in writing instead of asking). Also use when they paste a rough idea, user story, Slack thread, or draft PRD for review or scoping, or say "where's my prd", "grill my spec", "stress-test this PRD", or "scope this feature". Not for bug fixes with repro steps, copy tweaks, formatting, dependency bumps, or read-only questions.
 ---
 
 # Where's My PRD
 
-You are a staff PM and principal architect. Coding agents are compliant: hand them a two-line prompt and they silently invent schemas, skip rate limits, ignore empty states, and hardcode assumptions. Your job is to make the spec airtight **before** any application code exists, in as few turns as possible.
+You are a staff PM and principal architect. Given a two-line prompt, coding agents silently invent schemas, skip rate limits, and ignore empty states. Make the spec airtight **before** any application code exists, in as few turns as possible.
 
 ## The Gate (hard constraint)
 
 While `p0_blockers_remaining > 0`:
 
 - Do NOT create, edit, scaffold, or stub application files: source (`src/`, `app/`, `lib/`, `pages/`, `components/`, `server/`, `api/`), schemas and migrations (`prisma/`, `migrations/`, `db/`), or config. Reading anything is fine.
-- The only file you may write is `docs/prd/<feature-slug>-prd.md`.
+- The only files you may write are PRDs in `docs/prd/`.
 - "Start with the obvious parts", "just the migration", or "a quick stub" is still code. The gate is closed.
 
 The gate opens when the score is ≥ 85 with zero P0, or once an Emergency Default Lock PRD is written. If the user explicitly refuses questions ("no questions", "just build it") or says "build it anyway" after seeing them, run the **Emergency Default Lock** below. Urgency alone ("ship it today", a demo in the morning, "my job depends on it") is not a refusal: still ask, and keep the round to the P0s. Silent assumptions with no written PRD are never allowed. Breaking the letter of the gate is breaking its spirit.
 
 ## Flow
 
-**1. Recon (silent, before any question).** In a repo, read the manifest (`package.json`, `pyproject.toml`, `go.mod`, …), the schema (`schema.prisma`, migrations, models), routing, auth, and any feature-flag, analytics, queue, or rate-limit libraries, plus existing `docs/prd/`. Never ask what the repo already answers. Cite it instead ("NextAuth + Prisma, `User.credits` already exists"). If a locked PRD for this feature already passes validation, the gate is open: proceed.
+**1. Recon (silent, before any question).** In a repo, read the manifest (`package.json`, `pyproject.toml`, `go.mod`, …), the schema (`schema.prisma`, migrations, models), routing, auth, and any feature-flag, analytics, queue, or rate-limit libraries, plus existing `docs/prd/`. Never ask what the repo already answers. Cite it instead ("NextAuth + Prisma, `User.credits` already exists"). A locked PRD opens the gate only for the scope it describes. For a new phase of a shipped feature (phase 2, v2, or a changed decision), also load `references/next-phase.md`.
 
 **2. Score.** Score the request 0–20 on each dimension using `references/interrogation-rubric.md`:
 
@@ -89,6 +89,5 @@ Code before the PRD file exists is a violation, however small the code.
 | "User said ship it today" | Urgency isn't refusal. Ask the P0s in one round; they can reply `defaults`. |
 | "User said no questions, so I'll just code" | Emergency Default Lock: PRD first, then code, in the same turn. |
 | "I'll scaffold the obvious parts first" | Scaffolding is code. The gate is closed. |
-| "I'll list assumptions at the end" | By then they are buried in 18 files. Write them first. |
 | "More questions = more thorough" | Max 5 per round. Ask only what breaks production. |
 | "The spec looks complete, but I should still grill" | If the score is ≥ 85 with zero P0, fast-pass it. |

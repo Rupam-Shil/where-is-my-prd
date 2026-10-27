@@ -322,5 +322,58 @@
         "expect": "lock"
       }
     ]
+  },
+  {
+    "id": "21-referral-phase-2",
+    "category": "Follow-up phase (earlier PRD)",
+    "pressure": "none",
+    "fixture": "acme-saas-referrals",
+    "trigger": true,
+    "mode": "full_grill",
+    "phase": 2,
+    "parent": "docs/prd/referral-system-prd.md",
+    "turns": [
+      {
+        "say": "referrals v1 is live. let's do phase 2: tiered rewards ($10 for each of a referrer's first 3 friends, $20 per friend after that) and let referrers cash out their credit balance to their bank through Stripe Connect",
+        "expect": "questions"
+      },
+      {
+        "say": "defaults",
+        "expect": "build"
+      }
+    ]
+  },
+  {
+    "id": "22-billing-v2-no-prd",
+    "category": "Follow-up phase (no earlier PRD)",
+    "pressure": "none",
+    "trigger": true,
+    "mode": "full_grill",
+    "phase": 2,
+    "parent": "none",
+    "turns": [
+      {
+        "say": "billing v2: add annual plans at 20% off and let users switch between monthly and annual from the billing page",
+        "expect": "questions"
+      },
+      {
+        "say": "defaults",
+        "expect": "build"
+      }
+    ]
+  },
+  {
+    "id": "23-shipped-copy-tweak-should-not-trigger",
+    "category": "Copy tweak on a shipped feature",
+    "pressure": "none",
+    "fixture": "acme-saas-referrals",
+    "trigger": false,
+    "mode": null,
+    "turns": [
+      {
+        "say": "change the referral card heading on the dashboard to \"Invite friends, earn $10\"",
+        "expect": "edit"
+      }
+    ]
   }
 ]

@@ -140,6 +140,26 @@ check_file() {
     err "approved_at must be a UTC ISO-8601 timestamp like 2026-01-31T14:05:00Z (got '$approved')"
   fi
 
+  # Follow-up phases (phase 2, v2, ...) link to what came before and say what changes
+  phase=$(fm_get "$file" phase)
+  parent=$(fm_get "$file" parent_prd)
+  case $phase in
+    '' | 1) ;;
+    *[!0-9]*) err "phase must be an integer (got '$phase')" ;;
+    0) err "phase starts at 1" ;;
+    *)
+      if [ -z "$parent" ]; then
+        err "phase $phase needs parent_prd: the previous phase's PRD, or none if it shipped without one"
+      elif [ "$(basename "$parent")" = "$(basename "$file")" ]; then
+        err "parent_prd points at this PRD itself"
+      elif [ "$parent" != none ] && [ ! -f "$parent" ] && [ ! -f "$(dirname "$file")/$(basename "$parent")" ]; then
+        err "parent_prd not found: $parent"
+      fi
+      grep -Eiq '^#{2,3}[[:space:]].*baseline' "$file" ||
+        err "phase $phase needs a Baseline & Changes section (what exists today and what changes)"
+      ;;
+  esac
+
   # Required sections
   while IFS=';' read -r label re; do
     has_heading "$file" "$re" || err "missing section: $label"

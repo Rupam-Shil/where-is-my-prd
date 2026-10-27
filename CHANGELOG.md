@@ -22,4 +22,5 @@ Initial release.
 - `validate-prd.sh`: zero-dependency POSIX PRD linter.
 - GitHub Action (`uses: Rupam-Shil/where-is-my-prd@v1`) with an optional "PR must link a PRD" mode.
 - Installs via the Claude Code plugin + marketplace (with a `/grill-prd` command), a generated Cursor rule, or `npx skills add`.
-- Evals: 20 scenarios run against real headless Claude Code, including pressure tests. The harness checks the order of every file write, and results are published. See `evals/`.
+- Follow-up phases (phase 2, v2) for features that already shipped, with or without an earlier PRD: a new linked PRD (`phase`, `parent_prd`, Baseline & Changes), and the earlier PRD left as the record of what shipped.
+- Evals: 23 scenarios run against real headless Claude Code, including pressure tests and follow-up phases. The harness checks the order of every file write, and results are published. See `evals/`.

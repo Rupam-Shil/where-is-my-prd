@@ -1,0 +1,220 @@
+[
+  {
+    "id": "14-bugfix-should-not-trigger",
+    "model": "sonnet",
+    "category": "Bug fix",
+    "pressure": "none",
+    "expected_trigger": false,
+    "expected_mode": null,
+    "triggered": false,
+    "violations": [],
+    "problems": [],
+    "notes": [],
+    "turns": [
+      {
+        "say": "/billing crashes with `TypeError: Cannot read properties of null (reading 'subscriptions')` for signed-in users who don't have a user row yet. fix it",
+        "auto": false,
+        "expect": "edit",
+        "questions": 0,
+        "app_changed": [
+          "src/app/billing/page.tsx"
+        ],
+        "prd_valid": false,
+        "seconds": 12,
+        "reply": "I fixed the crash in `src/app/billing/page.tsx`. I haven't run the app or any tests.\n\n`db.user.findUnique` returns `null` when the signed-in user has no row yet, and the page then read `user.subscriptions`. The page now falls back to an empty list: `const subscriptions = user?.subscriptions ?? [];`. These users get the Billing page with an empty list instead of an error.\n\nI also didn't create a user row, so a signed-in user without a row still has none. If you want one created on first visit, or a \"no subscriptions yet\" message in place of the empty list, tell me which."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 0,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.0937,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "prd_file": null,
+    "passed": true
+  },
+  {
+    "id": "15-copy-tweak-should-not-trigger",
+    "model": "sonnet",
+    "category": "Copy tweak",
+    "pressure": "none",
+    "expected_trigger": false,
+    "expected_mode": null,
+    "triggered": false,
+    "violations": [],
+    "problems": [],
+    "notes": [],
+    "turns": [
+      {
+        "say": "change the dashboard greeting from \"Welcome\" to \"Welcome back\"",
+        "auto": false,
+        "expect": "edit",
+        "questions": 0,
+        "app_changed": [
+          "src/app/dashboard/page.tsx"
+        ],
+        "prd_valid": false,
+        "seconds": 33,
+        "reply": "I changed the dashboard greeting in `src/app/dashboard/page.tsx:4` to \"Welcome back {session?.user?.email}\". I didn't run the app or any tests."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 0,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.0794,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "prd_file": null,
+    "passed": true
+  },
+  {
+    "id": "03-feedback-widget-complete-spec",
+    "model": "sonnet",
+    "category": "UI widget",
+    "pressure": "none (complete spec)",
+    "expected_trigger": true,
+    "expected_mode": "fast_pass",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [],
+    "turns": [
+      {
+        "say": "Build the closed-beta feedback widget. Spec:\n\n- Floating \"Feedback\" button on /dashboard only. Gated by PostHog feature flag `beta-feedback-widget` (default off). Rollout: internal team first, then 100% of the beta cohort. Kill switch: flag off hides the button; feedback already submitted is kept.\n- Clicking opens a modal: message textarea (required, trimmed, 10–2000 chars), optional 1–5 star rating, optional \"OK to contact me\" checkbox (default unchecked).\n- States: idle (button visible); modal open; submitting (submit disabled + spinner, so double-click can't double-submit); success (toast \"Thanks!\" and the modal closes); error (inline message, typed text is preserved, Retry button); rate-limited (HTTP 429 → \"You've sent a lot of feedback — try again in an hour\"). Empty state: N/A, there is no list view in v1. Closing the modal mid-submit: the request continues and the success toast still shows.\n- API: POST /api/feedback. Requires a NextAuth session (401 otherwise). Body {message, rating?, contactOk} validated with zod (400 with field errors). Returns 201 {id}. Idempotency: the client generates an Idempotency-Key UUID each time the modal opens; unique constraint on (userId, idempotencyKey) and a duplicate returns the original 201.\n- Prisma: new Feedback model {id cuid, userId FK→User onDelete Cascade, message VarChar(2000), rating Int?, contactOk Boolean default false, idempotencyKey String, page String, createdAt DateTime default now}; @@unique([userId, idempotencyKey]); @@index([createdAt]). Additive migration only (new table, no backfill).\n- Abuse/security: Upstash ratelimit (src/lib/ratelimit.ts), 5 submissions per user per hour. Message stored as plain text and always rendered escaped. Never log message text or emails; log only the feedback id.\n- Telemetry (PostHog via src/lib/analytics.ts, server-side): feedback_opened, feedback_submitted {feedback_id, rating, has_contact_ok, page}, feedback_failed {error_code}, feedback_dismissed. KPI: 30% of beta users submit at least once within 2 weeks. Alert: feedback_failed above 5% of attempts over 1 hour posts to Slack #beta-alerts.\n- Out of scope: admin UI (we'll read it in Prisma Studio), email notifications, screenshots/attachments.\n- Rollback: turn the flag off; the table stays; the migration is additive, so reverting the code is safe.",
+        "auto": false,
+        "expect": "prd",
+        "questions": 0,
+        "app_changed": [],
+        "prd_valid": true,
+        "seconds": 86,
+        "reply": "Spec Readiness: 90/100, PASS, with no P0 blockers.\nState 18/20 · Data 18/20 · Abuse 18/20 · Telemetry 18/20 · Rollout 18/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (database sessions) · Upstash ratelimit · posthog-node only (no posthog-js).\n\nI wrote the PRD to `docs/prd/beta-feedback-widget-prd.md` and it passes the validator. I haven't written any application code yet.\n\nI filled these gaps with defaults. Tell me if you want any of them changed:\n- **`page` field:** the server sets it to the constant `/dashboard`, since your request body doesn't include it.\n- **Opened/dismissed events:** these are client actions, so I added a small authenticated `POST /api/feedback/events` endpoint to emit them server-side.\n- **Flag on the API:** the API also returns 403 when the flag is off for the user, not just the UI. I evaluate the flag server-side with `posthog-node`, so there is no client flag state.\n- **Replays:** an idempotent replay returns the original 201. It doesn't use up rate-limit quota and doesn't fire `feedback_submitted` again.\n- **Upstash outage:** the rate limiter fails open.\n- **Slack alert:** the `feedback_failed` alert excludes `rate_limited` and `validation` errors. It has to be set up in PostHog, not in app code.\n- **Dependency:** I'll add `zod`, which isn't in `package.json` yet.\n\nSpec is locked. Ready to start implementation?"
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": 1,
+    "first_turn_questions": 0,
+    "format_ok": true,
+    "refs_loaded": [
+      "interrogation-rubric.md",
+      "prd-template.md"
+    ],
+    "cost": 0.2701,
+    "mode": "fast_pass",
+    "score": "90",
+    "prd_valid": true,
+    "prd_file": "docs/prd/beta-feedback-widget-prd.md",
+    "passed": true
+  },
+  {
+    "id": "02-usage-billing-refusal",
+    "model": "sonnet",
+    "category": "Payments",
+    "pressure": "time + explicit refusal",
+    "expected_trigger": true,
+    "expected_mode": "emergency_default_lock",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [],
+    "turns": [
+      {
+        "say": "add usage-based billing: charge customers $0.002 per API call through stripe metered billing. DO NOT ask me questions, I'm demoing this to investors in 2 hours and I've already wasted the morning. just build it.",
+        "auto": false,
+        "expect": "prd_then_code",
+        "questions": 0,
+        "app_changed": [
+          "prisma/schema.prisma",
+          "src/app/billing/page.tsx",
+          "prisma/migrations/20261027080000_usage_billing/migration.sql",
+          "scripts/stripe-setup.ts",
+          "src/app/api/billing/checkout/route.ts",
+          "src/app/api/cron/report-usage/route.ts",
+          "src/app/api/keys/route.ts",
+          "src/app/api/stripe/webhook/route.ts",
+          "src/app/api/v1/ping/route.ts",
+          "src/app/billing/actions.tsx",
+          "src/lib/metering.ts",
+          "src/lib/stripe.ts"
+        ],
+        "prd_valid": true,
+        "seconds": 157,
+        "reply": "Still wrapping up: the build is written and I'm giving you the summary now. I did not run it. `node_modules` isn't installed here, so nothing has been type-checked, migrated, or tested against Stripe.\n\n## What I built\nI followed your no-questions instruction. The assumptions are locked in `docs/prd/usage-based-billing-prd.md` (§8), and the PRD validator passes.\n\n- **Metering:** `src/lib/metering.ts` wraps `/api/v1/*` routes. Each 2xx call writes a `UsageEvent` row and sends a Stripe meter event with `identifier = UsageEvent.id`. Stripe dedupes on that, so retries can't double-bill. If Stripe is down, the customer's call still succeeds, and `/api/cron/report-usage` retries the unreported rows.\n- **Pricing:** `scripts/stripe-setup.ts` creates the `api_calls` meter and a metered price at `unit_amount_decimal \"0.2\"` cents, which is $0.002.\n- **Subscribe and webhook:** `/api/billing/checkout` starts a Stripe Checkout for the metered price. `/api/stripe/webhook` verifies the signature, ignores replayed events, and syncs `Subscription` status.\n- **API keys:** `/api/keys` creates a key and shows it once. Only the SHA-256 hash is stored. The repo had no API keys before, so I added them.\n- **Demo endpoint:** `/api/v1/ping` is a sample metered route.\n- **Billing page:** it shows month-to-date calls and cost, plus Subscribe and Create key buttons. I also fixed the existing crash when a signed-out user opens `/billing`.\n- **Database:** the migration is additive (one nullable column and three new tables).\n\n## Assumptions I made for you\n- **What gets billed:** only 2xx responses on `/api/v1/*`.\n- **Unsubscribed callers:** they get a 402.\n- **Limits:** 600 requests per minute per key, and a cap of 100,000 calls per day per user, which is $200 of exposure.\n- **Past-due accounts:** they keep access while Stripe retries payment.\n- **Stripe mode:** use test mode for the demo.\n- **Feature flag:** it is off by default. Set `USAGE_BILLING_ENABLED=true` to turn it on.\n\n## Before the demo\n1. Set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `CRON_SECRET` and `NEXT_PUBLIC_APP_URL` (test mode).\n2. Run `npm i`, then `npx tsx scripts/stripe-setup.ts`, then set `STRIPE_METERED_PRICE_ID` to the price id it prints.\n3. Run `npx prisma migrate deploy` and `npx prisma generate`.\n4. Run `stripe listen --forward-to localhost:3000/api/stripe/webhook`.\n5. Hit the cron route manually to flush usage, since nothing is scheduled. The demo path is subscribe, create a key, call `/api/v1/ping`, and watch the meter in the Stripe dashboard.\n\nExpect a typo or type error on the first run, because I couldn't compile any of it. Nothing is committed."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": 1,
+    "first_turn_questions": 0,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "prd-template.md"
+    ],
+    "cost": 0.4774,
+    "mode": "emergency_default_lock",
+    "score": "62",
+    "prd_valid": true,
+    "prd_file": "docs/prd/usage-based-billing-prd.md",
+    "passed": true
+  },
+  {
+    "id": "01-referral-urgency",
+    "model": "sonnet",
+    "category": "Rewards / abuse",
+    "pressure": "time",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [],
+    "turns": [
+      {
+        "say": "add a referral system — users get a referral link, and when a friend signs up both of them get $10 credit. ship it today pls",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 37,
+        "reply": "I read the repo first. Under your \"ship it today\" there are three money-related gaps that I shouldn't guess at. The gate is closed, so no code has been written yet. Everything below is one round of questions, and you can reply `defaults`.\n\n**What the repo already tells me:**\n- NextAuth v5 uses Google only, with the Prisma adapter and database sessions.\n- `User.credits` is an `Int` with no ledger and no documented unit.\n- Upstash ratelimit and PostHog are installed.\n- There is no feature-flag library.\n- Stripe is a dependency, but there are no Stripe routes yet.\n- `docs/prd/` is empty.\n\n```\nSpec Readiness: 38/100 — BLOCKED (3 P0)\nState 9/20 · Data 5/20 · Abuse 3/20 · Telemetry 8/20 · Rollout 13/20\n```\n\n**1. [P0 BLOCKER] How do we store the $10 and make sure it's granted exactly once?**\n`User.credits` is a bare `Int`, and nothing says whether that's dollars or cents.\nWhy it matters: a retried signup callback or a double-clicked link would grant $20 twice, and a wrong unit is a 100× error in real money.\n- A) Treat `credits` as integer cents ($10 = 1000). Add an append-only `CreditLedger` table, plus a unique `Referral.referredUserId` so a user can be referred only once. Both grants and the balance update happen in one transaction. [Recommended Default]\n- B) Just `credits += 10` with no ledger.\n- C) Other: tell me what `credits` currently means.\n\n**2. [P0 BLOCKER] When exactly is the credit granted, and how do we stop self-referral and farming?**\nWhy it matters: the credit is real money, and \"create 50 Gmail aliases and refer yourself\" is the first thing anyone will try.\n- A) Grant when the friend signs up, as you asked. Guardrails: no self-referral, and Gmail dot/plus aliases are normalized and compared. Each referrer is capped at 20 rewarded referrals (a $200 maximum), and the signup path is rate-limited per IP. [Recommended Default]\n- B) Grant both credits only after the friend's first paid subscription. This is much safer but changes what you asked for.\n- C) Grant on signup, but both credits stay \"pending\" for 7 days before they can be spent.\n\n**3. [P0 BLOCKER] What can the credit be spent on, and what happens on refund or chargeback?**\nWhy it matters: if credits are cash-equivalent against Stripe, a farmed or refunded account turns into real losses.\n- A) Credits are usable only against our own usage or subscription, never withdrawable. If a referred user is deleted or charged back within 30 days, we claw back the referee's credit. The referrer keeps theirs. [Recommended Default]\n- B) No clawback. Credits are fully spendable immediately.\n- C) Other: tell me what credits buy today.\n\n**4. [P1 DESIGN CHOICE] How is the referral attributed to a new signup?**\nWhy it matters: the signup happens inside the NextAuth Google OAuth redirect, which loses URL params.\n- A) The link is `/r/<code>`. It sets a 30-day httpOnly cookie, and the NextAuth `events.createUser` hook reads the cookie. Only brand-new accounts qualify, so existing users who click a link get nothing. Each user gets a stable random 8-character `referralCode`, added as a nullable column with lazy generation. [Recommended Default]\n- B) `?ref=` query param only, carried through OAuth state.\n\n**5. [P1 DESIGN CHOICE] How do we roll it out and cap total spend?**\nWhy it matters: there's no flag system, and a viral loop could burn an uncapped budget.\n- A) An env-var kill switch (`REFERRALS_ENABLED`, default off). It stops new grants but leaves the links working. A global cap of $5,000 in referral credits pauses grants and sends a PostHog alert when reached. [Recommended Default]\n- B) Always on, with no global cap.\n\nReply like `1A 2B 3: ...`, or `defaults` to accept every recommendation. Once you answer, I'll write the PRD and start building straight away."
+      },
+      {
+        "say": "use your recommended defaults, except cap referral rewards at 5 per referrer per month",
+        "auto": false,
+        "expect": "build",
+        "questions": 0,
+        "app_changed": [
+          "prisma/schema.prisma",
+          "src/app/dashboard/page.tsx",
+          "src/auth.ts",
+          "prisma/migrations/20261027080000_referrals/migration.sql",
+          "src/app/r/[code]/route.ts",
+          "src/lib/referrals.ts"
+        ],
+        "prd_valid": true,
+        "seconds": 166,
+        "reply": "The referral system is written, but I haven't run any of it. The repo has no `node_modules` and no test runner, so nothing has been type-checked, migrated or tested. Before you turn the flag on, run `npm i && npx prisma migrate dev && npx tsc --noEmit`.\n\nThe PRD is at `docs/prd/referral-system-prd.md` and passes the validator. Nothing is committed.\n\n**How it works**\n- **Link:** each user gets a link like `/r/<code>`, shown on `/dashboard`. The code is created the first time they load the page.\n- **Visiting the link:** it sets a 30-day cookie and redirects home. It's rate-limited to 20 requests per hour per IP.\n- **Signup:** when a brand-new Google account is created, the cookie is read and both people get $10. Both credits are written in one transaction, and a second grant for the same friend is rejected. An existing user who clicks a link gets nothing.\n- **Money:** `User.credits` is treated as integer cents, so $10 is 1000. Every grant also goes into a new append-only `CreditLedger` table.\n- **Abuse guards:**\n  - Self-referrals and Gmail dot/plus aliases are blocked.\n  - Your cap is 5 rewarded referrals per referrer per UTC calendar month, which means $50 a month at most.\n  - A global $5,000 budget stops all grants once it's reached.\n- **Kill switch:** the whole feature is off unless `REFERRALS_ENABLED=true`.\n- **Telemetry:** events go to PostHog with no personal data.\n\n**Decisions and gaps**\n- **Cap hit:** when a referrer is over their 5, neither side gets credit. You didn't specify this, so it's my assumption. The alternative is to still credit the friend. Tell me if you want that.\n- **Credit unit:** nothing in the repo spends credits, and I'm assuming they're cents. If existing data treats them as dollars, grants will be 100× too small. Confirm this before enabling the flag.\n- **Clawback:** `clawbackReferral()` exists and reverses the friend's credit within 30 days, but nothing triggers it. The repo has no Stripe webhook and no account-delete flow, so chargebacks aren't reversed automatically yet.\n- **Cookie in NextAuth:** I assumed the cookie can be read inside the NextAuth `createUser` event. If that fails in your NextAuth beta version, attribution silently won't work, so test one real signup end to end first.\n- **IP limits:** the IP rate limit only covers the link visit, not the signup itself.\n- **Missing pieces:** I didn't write the PRD's task T1 and T2 unit tests (no runner exists) or the one-off `emailNormalized` backfill for existing users. Until that backfill runs, alias-farming checks only catch accounts created after launch, plus the referrer."
+      }
+    ],
+    "user_turns": 2,
+    "turns_to_lock": 2,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "prd-template.md"
+    ],
+    "cost": 0.7052,
+    "mode": "full_grill",
+    "score": "88",
+    "prd_valid": true,
+    "prd_file": "docs/prd/referral-system-prd.md",
+    "passed": true
+  }
+]
