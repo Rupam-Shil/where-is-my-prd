@@ -199,7 +199,7 @@ jobs:
   prd:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: Rupam-Shil/where-is-my-prd@v1
         with:
           require-pr-link: true   # PR description must reference docs/prd/<slug>-prd.md

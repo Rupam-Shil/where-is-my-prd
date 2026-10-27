@@ -9,7 +9,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Shellcheck
         run: shellcheck -s sh skills/wheres-my-prd/scripts/validate-prd.sh scripts/*.sh scripts/demo/*.sh tests/*.sh
