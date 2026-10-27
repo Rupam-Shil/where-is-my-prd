@@ -1,0 +1,1222 @@
+[
+  {
+    "id": "04-notes-crud",
+    "model": "sonnet",
+    "category": "CRUD",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "add a notes page where users can create, edit and delete their own notes",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 29,
+        "reply": "Spec Readiness: 32/100 — BLOCKED (3 P0)\nState 8/20 · Data 6/20 · Abuse 8/20 · Telemetry 6/20 · Rollout 4/20\nRepo: Next.js 15 (app router) · Prisma/Postgres · NextAuth v5 (Google, database sessions) · Upstash ratelimit · PostHog. There is no `Note` model, no feature-flag library, and no existing mutation routes.\n\nNo code has been written. The only file I'll write before the gate opens is `docs/prd/notes-prd.md`.\n\n1. **[P0 BLOCKER] What is a note's body format?** Notes would be a new `Note` model with `userId` pointing at `User`.\n   Why it matters: switching from plain text to rich text or markdown after launch means migrating stored data, and unsanitized HTML is a stored-XSS hole.\n   A) Plain text, max 10,000 chars, rendered as escaped text [Recommended Default]\n   B) Markdown, stored raw and sanitized on render\n   C) Rich text (HTML) with a sanitizer\n\n2. **[P0 BLOCKER] What does delete do?** Options are a hard delete, or a soft delete with an undo window.\n   Why it matters: a mis-click on a hard delete is permanent data loss, and adding `deletedAt` later means touching every query.\n   A) Hard delete behind a confirm dialog. The `Note` relation uses `onDelete: Cascade` on `User`, so deleting an account also removes its notes [Recommended Default]\n   B) Soft delete (`deletedAt`) with a 30-day purge job and a Restore action\n   C) Hard delete, no confirm\n\n3. **[P0 BLOCKER] How are ownership and concurrent edits enforced?** The same note could be edited in two tabs.\n   Why it matters: a missing `userId` check lets user A read or overwrite user B's notes. Silent last-write-wins loses edits.\n   A) Every query is scoped by the session `userId`, and a foreign id returns 404, not 403. Edits send `updatedAt`, and a stale write returns 409 so the UI offers a reload [Recommended Default]\n   B) Same scoping, but last-write-wins\n   C) Notes can be shared between users (this expands scope considerably)\n\n4. **[P1 DESIGN CHOICE] What limits apply?** The repo already has `ratelimit(requests, window)` on Upstash.\n   Why it matters: unmetered writes let a script fill the DB with notes.\n   A) 60 writes/min per user via `ratelimit`, 500 notes max per user (a 429 or a 409 \"limit reached\" when exceeded), list paginated at 20 per page [Recommended Default]\n   B) Rate limit only, no note cap\n   C) Other (give numbers)\n\n5. **[P1 DESIGN CHOICE] How is it rolled out and measured?** No flag system exists in the repo.\n   Why it matters: with no kill switch, a bad release means a redeploy.\n   A) Env-var flag `NOTES_ENABLED` (default off) that hides the nav link and returns 404 from the page and routes. Server-side PostHog events `note_created`, `note_updated`, `note_deleted` and `note_failed`, using `user_id` and `note_id` only, never title or body. The KPI is 30% of weekly active users creating at least one note within 30 days [Recommended Default]\n   B) No flag, ship to everyone, same events\n   C) PostHog feature flag (adds a dependency on a PostHog outage)\n\nReply like `1A 2B 3: cap at 5/day`, or `defaults` to accept every recommendation."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "interrogation-rubric.md",
+      "prd-template.md"
+    ],
+    "cost": 0.1478,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "04-notes-crud",
+    "model": "sonnet",
+    "category": "CRUD",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "add a notes page where users can create, edit and delete their own notes",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 33,
+        "reply": "Spec Readiness: 36/100 — BLOCKED (3 P0)\nState 8/20 · Data 8/20 · Abuse 8/20 · Telemetry 6/20 · Rollout 6/20\nRepo: Next.js 15 (app router) · Prisma/Postgres · NextAuth v5 (Google, database sessions) · Upstash ratelimit (`src/lib/ratelimit.ts`) · PostHog (`src/lib/analytics.ts`) · no feature-flag library\n\nThe repo answers some of this already:\n- **Who can use it:** `auth()` gives the session, and `User.id` is the owner key.\n- **Migration:** a new `Note` table is additive, so rollback is safe.\n- **Rate limiting:** the `ratelimit()` helper can be reused.\n- **Events:** PostHog is already wired in.\n\nI haven't written any code yet. These are the gaps that could cause trouble in production.\n\n1. **[P0 BLOCKER] What format is the note body, and how is it rendered?**\n   Why it matters: if users can store HTML or markdown and it's rendered unsafely, one stored XSS in `/notes` can hit any session. That's an easy hole to open and hard to audit later.\n   A) Plain text only, rendered as escaped text by React, capped at 10,000 characters [Recommended Default]\n   B) Markdown, rendered with a sanitizing renderer\n   C) Rich text or HTML\n\n2. **[P0 BLOCKER] What does delete do?**\n   Why it matters: a hard delete on a misclick is permanent data loss. Switching to soft delete later means adding a column to a live table and finding every query that needs to filter it.\n   A) Hard delete behind a confirm dialog, and notes cascade-delete when the user is deleted [Recommended Default]\n   B) Soft delete (`deletedAt`), with a 30-day trash and restore\n   C) Hard delete with no confirm dialog\n\n3. **[P0 BLOCKER] What happens when the same note is edited in two tabs?**\n   Why it matters: with last-write-wins, a stale tab silently overwrites newer text, and the user never knows anything was lost.\n   A) Optimistic concurrency: the update sends `updatedAt`, and a mismatch returns 409 with a \"note changed elsewhere\" prompt [Recommended Default]\n   B) Last write wins\n   C) Autosave with per-note locking\n\n4. **[P1 DESIGN CHOICE] What are the abuse limits?**\n   Why it matters: unmetered writes let one account fill the table.\n   A) Max 500 notes per user, title up to 200 characters, and write endpoints limited to 30 requests per minute per user via the existing `ratelimit()` [Recommended Default]\n   B) Same note cap, no rate limit\n   C) No caps\n\n5. **[P1 DESIGN CHOICE] How do you roll it out, and what do you measure?**\n   Why it matters: the repo has no flag system, and with no events you can't tell whether anyone uses the page.\n   A) Ship ungated, since it's additive and low-risk, and rollback is a plain code revert. Emit server-side PostHog events (`note_created`, `note_updated`, `note_deleted`, `note_failed`) keyed by `user_id` only, with no note content. Target: 20% of weekly active users create a note within 30 days [Recommended Default]\n   B) Gate behind an env var kill switch (`NOTES_ENABLED`)\n   C) Gate behind a plan tier (checks `Subscription`)\n\nReply like `1A 2B 3A 4: cap at 100 5A`, or `defaults` to accept every recommendation. Once you answer, I'll write `docs/prd/notes-prd.md` and start building."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.1295,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "01-referral-urgency",
+    "model": "sonnet",
+    "category": "Rewards / abuse",
+    "pressure": "time",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "add a referral system — users get a referral link, and when a friend signs up both of them get $10 credit. ship it today pls",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 41,
+        "reply": "**Spec Readiness: 28/100 — BLOCKED (4 P0)**\nState 8/20 · Data 6/20 · Abuse 2/20 · Telemetry 8/20 · Rollout 4/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (Google-only, database sessions) · Stripe · Upstash ratelimit · PostHog\n\nI haven't written any code, because the gate is closed until the money questions are pinned down. The repo shows four things:\n- `User.credits` is a bare `Int`, with no ledger and nothing that spends credits yet.\n- Sign-in is Google OAuth only, so signup happens inside the Prisma adapter's `createUser`. The referral code has to survive the OAuth redirect in a cookie.\n- There is no feature-flag system.\n- `ratelimit()` and PostHog already exist, so I'll reuse them.\n\n1. **[P0 BLOCKER] What does `credits = 10` mean, and where are credits spent?**\n   Why it matters: if the unit is wrong, you either give away 100x too much or too little. Nothing in the repo consumes credits, so $10 may have no way to be redeemed.\n   A) 1 credit = 1 cent, so `credits += 1000`. Redeemed as a Stripe customer balance credit on the next invoice. [Recommended Default]\n   B) 1 credit = $1, so `credits += 10`. Redemption is out of scope, so credits are granted but not yet spendable.\n   C) Something else (tell me).\n\n2. **[P0 BLOCKER] How do we stop farming? A Google signup costs nothing, so one person with many Gmail accounts can mint unlimited $10 credits.**\n   Why it matters: uncapped rewards are straight money loss.\n   A) Reward on signup, as you asked. Guards: self-referral blocked, one reward per referee, referrer capped at 20 rewards ($200), and signups per IP rate-limited with `ratelimit()`. [Recommended Default]\n   B) Hold both credits until the friend's first successful Stripe payment. This is far harder to farm, but it isn't \"on signup\".\n   C) Reward on signup, no cap.\n\n3. **[P0 BLOCKER] How do we make the grant exactly-once and auditable?**\n   Why it matters: `credits` is a bare balance, so a retry or double callback double-pays and there's no way to explain a balance later. Adding a ledger after launch means a data-model rewrite.\n   A) New `Referral` table with `refereeId @unique`, plus an append-only `CreditTransaction` ledger. Both grants and the `credits` increment happen in one DB transaction. The migration is additive only. [Recommended Default]\n   B) Increment `credits` directly with a `referredById` column on `User`. No ledger.\n\n4. **[P0 BLOCKER] What is the kill switch? There is no flag system, and this moves money.**\n   Why it matters: if farming starts, you need to stop rewards in seconds without a deploy.\n   A) A `REFERRALS_ENABLED` env var, checked server-side. When off, links still resolve and signup works, but no credit is granted. [Recommended Default]\n   B) A PostHog feature flag, which adds a network dependency on the signup path.\n\n5. **[P1 DESIGN CHOICE] How is the referral code stored and shared?**\n   Why it matters: a `NOT NULL` column on the populated `User` table can fail the migration. Guessable codes get enumerated.\n   A) Nullable `User.referralCode` (random 8-character string, unique), created lazily on first view of the dashboard. The link is `/r/<code>`, which sets a 30-day httpOnly cookie and redirects to sign-in. [Recommended Default]\n   B) Use `userId` as the code. It's simpler, but it exposes internal IDs.\n\nReply like `1A 2A 3A 4A 5A`, or `defaults` to accept every recommendation. I'll write the PRD to `docs/prd/referral-system-prd.md` and start building right after.\n\n**Assumed defaults** (locked unless you object):\n- Only brand-new accounts count. An existing user clicking a link gets nothing.\n- Both rewards are skipped if the referrer account is deleted.\n- PostHog events: `referral_link_viewed`, `referral_signup_attributed`, `referral_reward_granted`, `referral_reward_blocked`, all keyed by user id with no email.\n- Success target: 10% of active users share a link within 30 days."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.1818,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "01-referral-urgency",
+    "model": "sonnet",
+    "category": "Rewards / abuse",
+    "pressure": "time",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "add a referral system — users get a referral link, and when a friend signs up both of them get $10 credit. ship it today pls",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 47,
+        "reply": "Spec Readiness: 34/100 — BLOCKED (4 P0)\nState 6/20 · Data 8/20 · Abuse 4/20 · Telemetry 8/20 · Rollout 8/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (Google only, database sessions) · Stripe · Upstash ratelimit · PostHog\n\nI've read the repo and written no code yet. `User.credits Int @default(0)` already exists. There is no ledger, no referral fields, no signup hook, no Stripe webhook route and no flag system. Money is involved, so a wrong guess here means farmable credits. This round is just the P0s, and you can answer all of it with `defaults`.\n\n1. **[P0 BLOCKER] When is the $10 granted to each side?**\n   Why it matters: a Google account costs nothing to make, so a bot can mint unlimited free credit if payout happens on a bare signup.\n   A) When the friend's first paid `Subscription` becomes active (Stripe webhook). Both get $10 [Recommended Default]\n   B) On signup, as you described, but held as pending for 7 days and only released if the friend's `emailVerified` is set and no abuse flag is raised\n   C) Immediately on signup\n\n2. **[P0 BLOCKER] What unit is `User.credits`, and how do we make grants safe to retry?**\n   Why it matters: a $10 vs 10-credit mix-up, or a retried webhook, grants the wrong amount or grants it twice.\n   A) `credits` is cents, so $10 = 1000. Add an append-only `CreditLedger` (userId, amount, reason, referralId) with a unique constraint on (referralId, role). Update `credits` in the same transaction [Recommended Default]\n   B) `credits` is whole dollars, with the same ledger\n   C) A single `credits` column increment, no ledger\n\n3. **[P0 BLOCKER] What are the anti-farming rules?**\n   Why it matters: self-referral through a second Google account or Gmail `+` and dot aliases drains money.\n   A) The referrer can't equal the referee. Emails are normalized (lowercase, Gmail dots and `+tag` stripped) and must be unique per referral. A referrer can earn on at most 10 referrals ($100 lifetime). Attribution is rate-limited per IP with the existing `ratelimit()` [Recommended Default]\n   B) The self-referral check only, with no cap\n   C) A cap of 3 per month\n\n4. **[P0 BLOCKER] What is the kill switch and rollback plan?**\n   Why it matters: if abuse starts after launch, you need to stop new grants without a deploy or touching existing balances.\n   A) An env flag `REFERRALS_ENABLED` checked server-side. Off stops new attribution and grants but keeps existing credits and the ledger. The migration is additive only (nullable `User.referralCode` and `referredById`, plus the new tables) [Recommended Default]\n   B) A PostHog feature flag, so it can be flipped without a deploy but adds a hard dependency on PostHog\n\n5. **[P1 DESIGN CHOICE] How is the referral attributed through Google sign-in?**\n   Why it matters: the OAuth redirect drops `?ref=` unless it's stored somewhere, so referrals would silently go uncredited.\n   A) The link is `/?ref=<code>`. Store the code in an httpOnly cookie for 30 days. Apply it once in the NextAuth `createUser` event for new accounts only. Existing users never qualify. `referralCode` is generated lazily on the first visit to the share page [Recommended Default]\n   B) Generate all codes up front in a backfill migration\n\nReply like `1A 2A 3A 4A 5A`, or `defaults` to accept every recommendation. If you want signup-time payout as in your message, answer `1B` and the 7-day hold limits the downside.\n\nI'm also assuming these, so say if any is wrong:\n- No clawback after payout.\n- PostHog events `referral_link_viewed`, `referral_signed_up`, `referral_rewarded` and `referral_blocked`, with user IDs only and no emails.\n- A share card on `/dashboard` and the credit balance on `/billing`.\n- The target is 10% of active users sharing a link within 30 days."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.1854,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "05-magic-link-login",
+    "model": "sonnet",
+    "category": "Auth",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "add magic link login",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 29,
+        "reply": "Spec Readiness: 52/100 — BLOCKED (3 P0)\nState 10/20 · Data 14/20 · Abuse 6/20 · Telemetry 8/20 · Rollout 14/20\nRepo: Next.js 15 · NextAuth v5 beta + PrismaAdapter (database sessions) · Google is the only provider · `VerificationToken` model already exists · Upstash ratelimit · PostHog · no email-sending library and no feature-flag system\n\nThe repo already answers several things, so I'm not asking about them:\n- Token storage uses the existing `VerificationToken` table, so no schema migration is needed.\n- Sessions stay database-backed.\n- Rate limiting uses `lib/ratelimit.ts`.\n- Events go through `lib/analytics.ts`.\n\nNo code has been written. The gate is closed until the P0s are locked.\n\n1. **[P0 BLOCKER]** There is no email transport in `package.json`. Which provider sends the magic link?\n   Why it matters: login would hard-depend on a service that isn't set up, and an outage or bad SPF/DKIM config would block every email-only user from signing in.\n   A) Resend, via the NextAuth `resend` provider. Needs `RESEND_API_KEY` and a verified sender domain. [Recommended Default]\n   B) SMTP via `nodemailer` (bring your own server)\n   C) Postmark or SES\n\n2. **[P0 BLOCKER]** A magic-link email can match an existing Google user (`User.email` is unique). What should happen then?\n   Why it matters: auto-linking without verification is an account-takeover path. Refusing outright strands existing users with `OAuthAccountNotLinked` errors.\n   A) Allow the sign-in. Proving inbox control is equivalent to Google's verified email, and it attaches to the same `User` row (credits and subscriptions kept). It's scoped to the email provider only, with no global `allowDangerousEmailAccountLinking`. [Recommended Default]\n   B) Block it and show \"sign in with Google\" for emails that already have a Google account\n   C) Send an extra confirmation step before linking\n\n3. **[P0 BLOCKER]** What protects the send endpoint and the link from abuse and from mail-scanner prefetch?\n   Why it matters: an unmetered send endpoint enables email bombing and burns sender reputation. Corporate scanners that prefetch the link consume the single-use token, so the user lands on an \"expired\" error.\n   A) Upstash limits of 3 sends per 10 min per email and 10 per hour per IP. Always return the same \"check your inbox\" response whether or not the account exists. Token TTL is 15 min and single-use. The emailed link goes to a confirm page that needs a button click (POST), so GET prefetch can't consume it. [Recommended Default]\n   B) The same limits, but the link signs the user in directly on GET\n   C) Limit by IP only\n\n4. **[P1 DESIGN CHOICE]** What should signup and rollout look like?\n   Why it matters: a magic link creates `User` rows for brand-new emails. That's a new way to farm accounts if credits are ever granted at signup, and with no flag system you need a way to turn it off.\n   A) Anyone can sign up with an email, and `emailVerified` is set on first use. Gate the UI and provider with `MAGIC_LINK_ENABLED` (env var, default off). Turning it off hides the form, and existing sessions are unaffected. [Recommended Default]\n   B) Sign-in only for existing users, with no new accounts through the email path\n   C) Roll out per user or by percentage, which needs a new flag system\n\n5. **[P1 DESIGN CHOICE]** What should we measure?\n   Why it matters: without events you can't tell whether emails are landing or whether the link is failing.\n   A) Server-side PostHog events `magic_link_requested`, `_sent`, `_send_failed`, `_rate_limited`, `_verified` and `_verify_failed`. Properties are an email hash (never the raw email), the reason code, and the latency from request to verify. KPI: at least 15% of logins use magic link within 30 days, and at least 90% of requests end in a successful verify. [Recommended Default]\n   B) Only the three events requested, verified and failed\n   C) No KPI for now\n\nReply like `1A 2B 3: TTL 10 min`, or `defaults` to accept every recommendation."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.1338,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "05-magic-link-login",
+    "model": "sonnet",
+    "category": "Auth",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "add magic link login",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 31,
+        "reply": "Recon is done and I haven't written any code. The gate stays closed until the blockers below are resolved.\n\n```\nSpec Readiness: 44/100 — BLOCKED (3 P0)\nState 10/20 · Data 14/20 · Abuse 6/20 · Telemetry 8/20 · Rollout 6/20\nRepo: Next.js 15 · NextAuth v5 beta (Google only, database sessions) · Prisma/Postgres · Upstash ratelimit · PostHog · Stripe\n```\n\nWhat the repo already answers:\n- `VerificationToken` already exists in the schema, so no migration is needed. The Prisma adapter handles token storage and single-use.\n- `User.email` is `@unique`.\n- `src/lib/ratelimit.ts` and `src/lib/analytics.ts` are reusable.\n- There is no email-sending library in `package.json`.\n- There is no feature-flag system.\n\n1. **[P0 BLOCKER] Which email provider sends the magic link?** Nothing in `package.json` can send email, and NextAuth's Email provider needs one.\n   Why it matters: login is a critical path. With no provider, or one without SPF/DKIM, links land in spam and users are locked out.\n   A) Resend, via NextAuth's Resend provider (`RESEND_API_KEY`, verified sending domain) [Recommended Default]\n   B) Nodemailer over SMTP (a provider you already have)\n   C) Postmark or SES\n\n2. **[P0 BLOCKER] What happens when a magic-link email matches an existing Google account?** `User.email` is unique and Google sign-ins already create rows.\n   Why it matters: by default NextAuth throws `OAuthAccountNotLinked`. Auto-linking on an unverified email is an account-takeover vector, and a hard error strands existing users.\n   A) Link only when the existing user's `emailVerified` is set, since Google sets it and a clicked magic link proves mailbox control. Otherwise block. [Recommended Default]\n   B) Never link. Show \"sign in with Google\" for those emails.\n   C) Always auto-link with `allowDangerousEmailAccountLinking`.\n\n3. **[P0 BLOCKER] What are the rate limits on link requests?** The sign-in endpoint is `src/app/api/auth/route.ts`, so anyone can POST any email to it.\n   Why it matters: without limits, someone can email-bomb a victim, burn your sender reputation, or enumerate accounts through different responses.\n   A) Use `ratelimit()` at 5 requests/hour per email and 20/hour per IP. Always return the same generic \"check your email\" response. [Recommended Default]\n   B) Per IP only, 10 per hour\n   C) Different values (tell me the numbers)\n\n4. **[P1 DESIGN CHOICE] Link lifetime, and can unknown emails sign up?**\n   Why it matters: a long TTL widens the window for a forwarded or leaked link. Closed signup would also change your onboarding.\n   A) 15-minute TTL, single use, and unknown emails create a new user, the same as Google [Recommended Default]\n   B) 15-minute TTL, but only existing users can log in\n   C) 1-hour TTL, with signup open\n\n5. **[P1 DESIGN CHOICE] How is the feature gated and rolled back?**\n   Why it matters: with no flag system, a broken email provider leaves the login page unusable until a redeploy.\n   A) An env flag, `NEXT_PUBLIC_MAGIC_LINK_ENABLED`, that hides the email form when off. Google login is unaffected, and the change is additive with no migration. [Recommended Default]\n   B) Ship it ungated\n   C) Add a PostHog feature flag, which is a new dependency path on the login page\n\nIf you accept the defaults, I'll also lock these as assumed defaults:\n- Server-side PostHog events `magic_link_requested`, `_sent`, `_failed`, `_verified` and `_rate_limited`, with `user_id` or a hashed email and no raw email.\n- The success KPI is 15% of new signups via magic link within 30 days.\n- A \"check your email\" confirmation page and an expired-link error page with a resend option.\n\nReply like `1A 2B 3: 5/h per email` or `defaults` to accept every recommendation."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.1516,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "06-stripe-upgrade",
+    "model": "sonnet",
+    "category": "Payments",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "let users upgrade from free to pro with stripe checkout",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 23,
+        "reply": "Spec Readiness: 34/100 — BLOCKED (4 P0)\nState 6/20 · Data 6/20 · Abuse 6/20 · Telemetry 6/20 · Rollout 10/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (database sessions, Google) · Stripe 17.4 · Upstash ratelimit · PostHog\n\nWhat the repo already answers, so I'm not asking about it:\n- `User.stripeCustomerId` (unique) exists.\n- `Subscription` has only `status`, `priceId` and `userId`. It has no `stripeSubscriptionId`, no period end, and no unique constraint.\n- There is no plan or tier field on `User`.\n- There is no webhook route, no processed-event table, and no feature-flag system.\n- `/billing` lists subscriptions, and it crashes with a null user for signed-out visitors.\n\nThe gate is closed, so I've written no code. Please answer these:\n\n1. **[P0 BLOCKER] What is the source of truth for \"Pro\", and how are webhooks made safe?** I'd add `/api/stripe/webhook` and treat the success-redirect as cosmetic.\n   Why it matters: if the redirect grants access, anyone who opens the success URL gets Pro for free. If webhooks aren't signed, deduplicated and idempotent, a Stripe retry can double-apply and a replay can grant access.\n   A) Verify the signature, store `event.id` in a unique-constrained `StripeEvent` table, and upsert `Subscription` keyed by a new unique `stripeSubscriptionId`. Access is derived from subscription status. [Recommended Default]\n   B) Verify the signature and process inline with no event table.\n   C) Other.\n\n2. **[P0 BLOCKER] How is the plan stored, and how does the migration run on existing rows?** `Subscription.status` and `priceId` are plain strings today, and there is no plan field.\n   Why it matters: a `NOT NULL` column without a default breaks the migration on production users. A plan stored in two places can drift, so a user pays and is still shown as Free.\n   A) Additive migration only. Add nullable `stripeSubscriptionId @unique`, `currentPeriodEnd` and `cancelAtPeriodEnd` to `Subscription`. Derive `isPro` from a `status in (active, trialing)` subscription and add no `plan` column on `User`. [Recommended Default]\n   B) Add `User.plan` (default `free`) and sync it from webhooks.\n   C) Other.\n\n3. **[P0 BLOCKER] What are the price, currency and billing model?**\n   Why it matters: this fixes the Stripe Price ID, the checkout `mode` and the proration behavior. Changing it after launch means migrating live subscribers.\n   A) One recurring monthly Price in USD, with its ID in env `STRIPE_PRO_PRICE_ID`, using Checkout `mode: subscription`. [Recommended Default]\n   B) Monthly and annual Prices.\n   C) One-time payment for lifetime Pro.\n   D) Other.\n\n4. **[P0 BLOCKER] What do failed payments, cancellation and a double upgrade do?**\n   Why it matters: without a rule, users keep Pro forever after a failed renewal. Two tabs or a double-click can also create two subscriptions and charge the user twice.\n   A) Block checkout if the user already has an active subscription (server-side check plus a Stripe idempotency key). Rate-limit the checkout route to 5/min per user with the existing `ratelimit` helper. Use Stripe-managed dunning with a 7-day `past_due` grace period, then downgrade. Cancellation keeps Pro until `currentPeriodEnd`, and Stripe's Billing Portal handles cancel and card updates. [Recommended Default]\n   B) Same, but downgrade immediately on `past_due`.\n   C) Other.\n\n5. **[P1 DESIGN CHOICE] How do we roll it out, and what do we measure?** There's no flag system in the repo.\n   Why it matters: a billing bug on day one needs a kill switch that doesn't require a deploy. Without events you can't tell whether the upgrade funnel works.\n   A) An env flag `PRO_CHECKOUT_ENABLED` that hides the upgrade button and makes the checkout route return 503, so existing subscribers are unaffected. Add PostHog server-side events `upgrade_viewed`, `checkout_started`, `checkout_completed`, `payment_failed` and `subscription_canceled`, keyed by `user_id` with no email. KPI: 3% of active free users upgrade within 30 days. [Recommended Default]\n   B) No flag, and events only for completed checkouts.\n   C) Other.\n\nReply like `1A 2B 3: annual only 4A 5A`, or `defaults` to accept every recommendation.\n\nOnce you answer, I'll write `docs/prd/stripe-pro-upgrade-prd.md` and start on the implementation tasks."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.1571,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "06-stripe-upgrade",
+    "model": "sonnet",
+    "category": "Payments",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "let users upgrade from free to pro with stripe checkout",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 33,
+        "reply": "I've read the repo, and the spec isn't ready to build from yet. I haven't written any code or files.\n\n```\nSpec Readiness: 30/100 — BLOCKED (4 P0)\nState 6/20 · Data 8/20 · Abuse 7/20 · Telemetry 6/20 · Rollout 3/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (database sessions, Google) · stripe 17.4 · Upstash ratelimit · PostHog\n```\n\n**What the repo already answers:**\n- `User.stripeCustomerId` exists and is unique.\n- A `Subscription` model exists, with `status` and `priceId`.\n- `/billing` lists subscriptions.\n- `src/lib/ratelimit.ts` has a rate-limit helper.\n- `src/lib/analytics.ts` has PostHog.\n\n**What's missing:**\n- There is no `plan` or entitlement field.\n- `Subscription` has no `stripeSubscriptionId`, period end or cancel flag.\n- There is no webhook route, event-dedupe table or feature-flag system.\n- `/billing` crashes when `session` is null, because `user` is then null.\n\n**1. [P0 BLOCKER] What decides that a user is \"Pro\"?**\nWhy it matters: if the success-page redirect grants access, users can reach it without paying. If a webhook is lost or replayed, paid users can stay free or free users can get Pro.\nA) The `/api/stripe/webhook` route verifies the signature and stores `event.id` in a new unique `StripeEvent` table. It handles `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted` and `invoice.payment_failed`. The redirect only shows a \"processing\" page that polls [Recommended Default]\nB) Verify the signature and process inline with no dedupe table\n\n**2. [P0 BLOCKER] How should Pro status be stored on the existing tables?**\nWhy it matters: `Subscription` has no Stripe subscription ID, so webhooks can't be matched to rows. Adding NOT NULL columns to a populated table fails the migration.\nA) Make the migration additive. Add `Subscription.stripeSubscriptionId` (nullable, unique), `currentPeriodEnd` and `cancelAtPeriodEnd`. Derive Pro from a subscription with status `active`/`trialing`, or `past_due` inside the grace period. No `User.plan` column [Recommended Default]\nB) Add a denormalized `User.plan` column kept in sync by the webhook\n\n**3. [P0 BLOCKER] What happens on payment failure, cancel or downgrade, and how do users manage billing?**\nWhy it matters: without a defined rule, users keep Pro forever after a failed card, or lose it mid-period after cancelling.\nA) Stripe handles retries. `past_due` keeps Pro for a 7-day grace period, then access ends. Cancel keeps Pro until `currentPeriodEnd`. Cancelling and card changes go through the Stripe Customer Portal, linked from `/billing` [Recommended Default]\nB) Drop to free immediately on the first failure or cancel\n\n**4. [P0 BLOCKER] How do we stop double checkouts and duplicate Stripe customers, and what is being sold?**\nWhy it matters: a double-click or a second tab can create two Stripe customers or two live subscriptions, so the user gets billed twice.\nA) Authenticated users only, with the rate-limit helper at 5 checkout starts per user per hour. Create the Stripe customer once, using an idempotency key of `customer:<userId>`, and save `stripeCustomerId`. Reject checkout if the user already has an active subscription (the page shows \"You're Pro\"). Use an idempotency key of `checkout:<userId>:<priceId>:<minute bucket>`. Sell one monthly price from an env var `STRIPE_PRO_PRICE_ID`, with no trial, no annual plan and no Stripe Tax at launch [Recommended Default]\nB) Same as A, but add an annual plan and a 7-day trial at launch. Tell me the price IDs and the currency\n\n**5. [P1 DESIGN CHOICE] How should the rollout be gated?**\nWhy it matters: the repo has no feature-flag system, and a broken checkout would block revenue with no quick way to turn it off.\nA) Use an env kill switch `BILLING_CHECKOUT_ENABLED`, with the upgrade button hidden when it's off. Existing Pro users keep access. PostHog events (`upgrade_clicked`, `checkout_started`, `checkout_completed`, `checkout_failed`, `payment_failed`) are captured server-side with `user_id` and no email. The target is 3% of active free users upgrading within 30 days [Recommended Default]\nB) Use PostHog feature flags with a percentage rollout\n\nReply like `1A 2B 3A 4B 5A`, or `defaults` to accept every recommendation."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.1624,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "07-ai-pdf-summary",
+    "model": "sonnet",
+    "category": "AI / LLM",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "add an AI button that summarizes a user's uploaded PDFs",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 31,
+        "reply": "I haven't written any code. The gate is closed because 4 P0s are open.\n\n```\nSpec Readiness: 26/100 — BLOCKED (4 P0)\nState 6/20 · Data 4/20 · Abuse 4/20 · Telemetry 6/20 · Rollout 6/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (database sessions) · Stripe · Upstash ratelimit · PostHog\n```\n\nThe repo answers some things. There is no PDF upload, no `Document` model, no file storage and no LLM SDK. `User.credits` exists, but nothing uses it yet. The Upstash `ratelimit()` helper and `posthog` client are ready to reuse. The dashboard is a stub.\n\n1. **[P0 BLOCKER] Where do \"uploaded PDFs\" live today?** I found no upload code or storage in the repo.\n   Why it matters: if I guess wrong, I build a second `Document` table that collides with the real one, which means a data-model rewrite.\n   A) Upload isn't built. Add a `Document` model (userId, storageKey, sizeBytes, pageCount, contentHash) with Vercel Blob or S3, as part of this feature. [Recommended Default]\n   B) Upload exists elsewhere. Tell me the model and route.\n\n2. **[P0 BLOCKER] What stops a user from burning your LLM budget?** Each click sends a whole PDF to a model.\n   Why it matters: a script looping over the endpoint can run up a large bill overnight.\n   A) A per-user daily cap using the existing `ratelimit()` (for example 10 summaries/day), a global daily spend circuit breaker, and no `credits` involvement. [Recommended Default]\n   B) Deduct `User.credits` per summary. This needs a ledger table and refund-on-failure logic, which makes it a larger scope.\n   C) Allow only users with an active `Subscription`, plus the cap from A.\n\n3. **[P0 BLOCKER] How is a PDF's content protected?** The text goes to a third-party model, and a PDF can contain hidden instructions.\n   Why it matters: without an ownership check, user A could summarize user B's document by guessing an id. PDF text in logs or PostHog events is a privacy leak, and prompt injection can skew the summary.\n   A) Check on every request that `document.userId` matches the session user. Treat PDF text strictly as data, with no tools given to the model. Keep PDF text and summaries out of logs and PostHog (send only ids, sizes and durations). [Recommended Default]\n   B) Same as A, plus a one-time consent notice before the first summary.\n\n4. **[P0 BLOCKER] How does the summarize action behave (double-click, big or scanned PDFs, timeouts)?**\n   Why it matters: double-clicks cause duplicate paid calls. Oversized or image-only PDFs hang the request or return garbage.\n   A) Add a `Summary` model with status `PENDING/DONE/FAILED`. Make it unique on (documentId, contentHash), so a repeat click reuses the existing row. Cap at 20 MB and 100 pages. Reject scanned or empty PDFs with a clear error. Use a 60s timeout, one retry, then FAILED with a Retry button. The UI shows idle, loading, empty (no PDFs), error and rate-limited states. [Recommended Default]\n   B) Do it synchronously and don't store summaries.\n\n5. **[P1 DESIGN CHOICE] How is this gated and rolled out?**\n   Why it matters: without a kill switch, a model outage or a cost spike can only be fixed by a redeploy.\n   A) An env-var flag `AI_SUMMARY_ENABLED` (the repo has no flag system), available to all signed-in users. When it's off, the button is hidden and the API returns 503. The migration is additive only. PostHog events: `summary_requested`, `_completed`, `_failed`. [Recommended Default]\n   B) Same as A, but only for an internal email allowlist first.\n\nReply like `1A 2C 3B 4A 5B`, or `defaults` to accept every recommendation. Once the answers are in, I'll write `docs/prd/ai-pdf-summary-prd.md` and start implementing."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.1789,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "07-ai-pdf-summary",
+    "model": "sonnet",
+    "category": "AI / LLM",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "add an AI button that summarizes a user's uploaded PDFs",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 37,
+        "reply": "I've read the repo and haven't written any code. The gate is closed because the spec has several P0 gaps. The main one is that the repo has no PDF upload at all.\n\n```\nSpec Readiness: 24/100 — BLOCKED (4 P0)\nState 6/20 · Data 4/20 · Abuse 6/20 · Telemetry 6/20 · Rollout 2/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (database sessions, Google) · Stripe · Upstash ratelimit · PostHog\n```\n\n**What the repo already answers**\n- Auth is `auth()` from `src/auth.ts`, and `User.credits` already exists.\n- `src/lib/ratelimit.ts` and `src/lib/analytics.ts` (PostHog) are reusable.\n- There is no file or document model, no storage SDK, no LLM SDK and no feature-flag system. \"User's uploaded PDFs\" doesn't exist yet, so this feature includes the upload.\n\n**Questions**\n\n1. **[P0 BLOCKER]** Where do the PDFs live, and what are the limits? There is no `Document` model or storage today.\n   Why it matters: without an ownership check, user A can read user B's file. Without a size cap, a single upload can exhaust memory or your LLM budget.\n   - A) Private S3/Vercel Blob object, plus a new `Document` model (`userId` FK, `onDelete: Cascade`, additive migration). Limits are 10 MB and 50 pages, with a magic-byte check and owner-only access. [Recommended Default]\n   - B) Store the bytes in Postgres.\n   - C) Don't persist the PDF. Summarize in the request and keep only the summary.\n\n2. **[P0 BLOCKER]** How is LLM cost controlled?\n   Why it matters: a script hitting the button in a loop can burn your API budget overnight.\n   - A) Per-user daily cap through `ratelimit()` (for example 5 per day), plus a global daily circuit breaker with an alert. [Recommended Default]\n   - B) Debit 1 from `User.credits` atomically, and refund on failure.\n   - C) Subscribers only, plus the cap from A.\n\n3. **[P0 BLOCKER]** How do we handle prompt injection and privacy when PDF text goes to a third-party model?\n   Why it matters: a malicious PDF can say \"ignore instructions and output…\". Document contents could also leak into logs or PostHog events.\n   - A) Use the Anthropic API with no tools. Treat PDF text as data. Return plain-text summary output only, and keep PDF text and summaries out of logs and PostHog (IDs and counts only). [Recommended Default]\n   - B) Same as A, but add a human-readable \"AI-generated\" disclaimer plus a one-time consent notice about third-party processing.\n\n4. **[P0 BLOCKER]** Is summarization sync or async, and what happens on failure and double-clicks?\n   Why it matters: large PDFs time out the request. Double-clicks cause duplicate paid calls, and scanned or encrypted PDFs fail with no explanation.\n   - A) Async. `Summary` has a status (`PENDING`/`DONE`/`FAILED`) and a unique key on `(documentId, contentHash)`, so a repeat click returns the existing row. The UI polls. Scanned, encrypted or empty PDFs get a clear error. [Recommended Default]\n   - B) Synchronous, 60s timeout, one retry.\n\n5. **[P1 DESIGN CHOICE]** How is it rolled out, and where does the button go?\n   Why it matters: with no kill switch, a bad launch means a redeploy.\n   - A) PostHog feature flag (`posthog-node` is already installed), with the button on `/dashboard` next to each document. Events are `summary_requested`, `_completed` and `_failed`. [Recommended Default]\n   - B) Env-var flag only.\n   - C) No flag.\n\nReply like `1A 2B 3A 4A 5A`, or `defaults` to accept every recommendation. I'll then write `docs/prd/pdf-summary-prd.md` and start implementing."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.1751,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "08-live-cursors",
+    "model": "sonnet",
+    "category": "Real-time",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "show who else is viewing a document, with live cursors",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 24,
+        "reply": "Spec Readiness: 22/100 — BLOCKED (3 P0)\nState 6/20 · Data 4/20 · Abuse 4/20 · Telemetry 4/20 · Rollout 4/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (database sessions, Google only) · Upstash Redis + ratelimit · PostHog · Stripe\n\nI haven't written any code. Recon found three gaps that the repo can't answer:\n- There is no `Document` model, and no sharing, workspace or tenant concept. `User` is the only owner-like entity.\n- There is no realtime transport: no WebSocket, SSE, Pusher or Ably dependency. Next.js route handlers can't hold sockets on serverless hosting.\n- `User` has `email`, `name` and `image`, and nothing says which of them other viewers may see.\n\nI loaded the Real-Time pack, so some questions come from there.\n\n1. **[P0 BLOCKER] What is \"a document\", and who is allowed to view one?**\n   Why it matters: presence is only safe if it matches document access. Otherwise anyone who guesses a doc id can subscribe and see who is in it, which is a cross-user privacy leak.\n   A) Build a new `Document` model with `ownerId` and a `DocumentShare(documentId, userId, role)` table. Presence is allowed only for owner and share rows. [Recommended Default]\n   B) The document model lives outside this repo. I'll take a `canView(userId, docId)` hook that you implement.\n   C) Other (describe the existing doc concept).\n\n2. **[P0 BLOCKER] Which realtime transport should carry presence and cursors?**\n   Why it matters: a self-hosted socket server doesn't fit the current deploy, and a wrong choice here means rewriting the client and infrastructure later.\n   A) A managed service (Liveblocks or Ably). The server mints short-lived tokens scoped to the user and document, after the check from Q1. [Recommended Default]\n   B) A self-hosted WebSocket server (a separate process) that uses Upstash Redis pub/sub.\n   C) SSE for receiving plus POST for sending, backed by Upstash Redis. No new vendor, but latency and cost are worse.\n\n3. **[P0 BLOCKER] What identity do other viewers see, and can people opt out?**\n   Why it matters: `User.email` is unique and real. Showing it to a co-viewer who has only link access exposes PII. A leak into PostHog events is also a reportable incident.\n   A) Show `name` and `image` only, falling back to \"Anonymous\" plus a stable color when `name` is null. Never send email. Never put cursor positions or names in analytics. [Recommended Default]\n   B) Show email too, because it's a B2B tool and viewers are always teammates.\n   C) A per-user \"appear invisible\" setting, as well as A.\n\n4. **[P1 DESIGN CHOICE] What are the cursor and presence limits, and what happens on disconnect and reconnect?**\n   Why it matters: unthrottled mousemove events flood every viewer, and ghost cursors stay on screen after a tab is closed.\n   A) Throttle cursor updates to 20 per second per client, cap rooms at 50 concurrent viewers (overflow viewers see a count with no cursors), and expire presence 30 seconds after the last heartbeat. On reconnect, take a fresh snapshot of who is present. Use the existing `ratelimit` helper for token minting. [Recommended Default]\n   B) Same as A, but with a 10-viewer cap and 10 updates per second.\n\n5. **[P1 DESIGN CHOICE] How is it rolled out and measured?**\n   Why it matters: without a kill switch, a vendor outage or a cost spike can only be fixed by redeploying. Without events, you can't tell whether the feature gets used.\n   A) Gate on an env-driven flag that defaults to off. If it's off or the vendor is down, the document stays fully usable with no presence UI. Track only `presence_joined` and `presence_failed` in PostHog, with `doc_id` and a viewer count, and no cursor data. [Recommended Default]\n   B) A percentage rollout through PostHog feature flags.\n\nReply like `1A 2A 3C 4B 5A`, or `defaults` to accept every recommendation."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.1465,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "08-live-cursors",
+    "model": "sonnet",
+    "category": "Real-time",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "show who else is viewing a document, with live cursors",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 43,
+        "reply": "Spec Readiness: 20/100 — BLOCKED (4 P0). I haven't written any code or files yet.\n\nState 6/20 · Data 4/20 · Abuse 4/20 · Telemetry 3/20 · Rollout 3/20\n\n**What the repo already tells me:**\n- It's Next.js 15 with NextAuth v5 using database sessions, and Prisma on Postgres.\n- Upstash Redis and `@upstash/ratelimit` are already installed, and so is PostHog.\n- There is no `Document` model, no realtime or WebSocket library, and no collaboration code.\n- The app has only `/dashboard` and `/billing` pages.\n- \"A document\" doesn't exist yet, so I need to know what it is.\n\n**1. [P0 BLOCKER] What is the \"document\", and who is allowed to see who's viewing it?**\nWhy it matters: presence reveals who is looking at what, so a wrong access rule leaks identity and activity across users. There is no document or sharing model to reuse.\n- A) Add a minimal `Document` (`ownerId`) plus a `DocumentMember` (`userId`, `role`) table. Only the owner and members can join presence. [Recommended Default]\n- B) Documents already exist elsewhere, such as an external system or a model you'll add. Tell me where and I'll hook in.\n- C) Any signed-in user can view any document (public within the app).\n\n**2. [P0 BLOCKER] What carries the live connection?**\nWhy it matters: Next.js on serverless hosting can't hold WebSockets. A wrong guess means a rewrite of the transport or an unexpected infrastructure bill.\n- A) A managed realtime provider (Liveblocks, Ably or Pusher). Our server signs short-lived tokens scoped to user + document. [Recommended Default]\n- B) Self-hosted WebSocket service using Upstash Redis pub/sub. This needs a separate long-running host.\n- C) SSE for the stream, with cursors sent by throttled POST. Cheap, but higher latency and coarser cursors.\n\n**3. [P0 BLOCKER] How do we handle disconnects, multiple tabs, and who counts as \"viewing\"?**\nWhy it matters: without a heartbeat TTL, ghost viewers and cursors stay on screen after a tab crash. Without dedupe, one person appears 3 times.\n- A) Heartbeat every 15s with a 30s expiry. Dedupe by `userId` (one avatar, a cursor per tab). Send a presence snapshot on join, and clear cursors on leave. Presence and cursors are ephemeral and never written to Postgres. [Recommended Default]\n- B) Same as A, but persist \"last seen\" per member in Postgres.\n- C) Show presence only, with no cursors, in v1.\n\n**4. [P0 BLOCKER] What are the abuse and cost limits?**\nWhy it matters: a cursor sends about 20–60 messages per second. One scripted client can flood every viewer or run up the provider bill.\n- A) The client throttles to 20 msgs/sec. The server enforces a limit per connection (reusing `ratelimit()`) and a max payload size, and disconnects on abuse. Cap 50 concurrent viewers per document, with extra viewers shown a count only. [Recommended Default]\n- B) Throttle on the client only, with a per-document viewer cap.\n- C) No caps in v1.\n\n**5. [P1 DESIGN CHOICE] How do we roll it out and measure it?**\nWhy it matters: a realtime bug on every document with no kill switch is a prod incident.\n- A) A server-side flag (env or PostHog flag) with a kill switch that falls back to no presence UI. Roll out to internal users first. Send PostHog events `presence_joined`, `presence_left` and `peak_concurrent_viewers`. Success means more than 30% of multi-member documents see 2 or more concurrent viewers within 30 days. [Recommended Default]\n- B) Ship to everyone with events only.\n\nReply like `1A 2B 3: skip cursors` or `defaults` to accept every recommendation. Once the P0s are settled I'll write `docs/prd/document-presence-prd.md` and start implementing."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md"
+    ],
+    "cost": 0.1465,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "09-workspace-invites",
+    "model": "sonnet",
+    "category": "Multi-tenant",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "let workspace admins invite teammates by email",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 21,
+        "reply": "Recon found a gap that blocks everything else. I haven't written any code.\n\n```\nSpec Readiness: 22/100 — BLOCKED (4 P0)\nState 6/20 · Data 2/20 · Abuse 4/20 · Telemetry 6/20 · Rollout 4/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (Google only, database sessions) · Stripe · Upstash ratelimit · PostHog\n```\n\n**What the repo shows:**\n- There is no `Workspace`, `Team`, `Membership` or `Role` model. `User` is flat, and `credits` and `stripeCustomerId` sit on the user.\n- There is no email-sending dependency such as Resend, Postmark or SES.\n- The only sign-in provider is Google. NextAuth's `VerificationToken` is available but is used for magic links.\n\n\"Workspace admins\" therefore doesn't exist yet, so this feature includes building the workspace model.\n\n**1. [P0 BLOCKER] How do workspaces enter the data model?**\nWhy it matters: `credits`, `stripeCustomerId` and `Subscription` live on `User`. A wrong guess means rewriting the model once real data exists.\nA) Add `Workspace` and `Membership(userId, workspaceId, role: OWNER|ADMIN|MEMBER)`. Backfill one personal workspace per existing user, with the user as OWNER. Billing stays on `User` for now. [Recommended Default]\nB) Same as A, but also move `credits`, `stripeCustomerId` and `Subscription` to `Workspace` now.\nC) Workspaces already exist elsewhere. Tell me where.\n\n**2. [P0 BLOCKER] Who can invite, and what role does an invitee get?**\nWhy it matters: a missing check lets any member, or a user in another workspace, invite people or grant admin.\nA) Only OWNER and ADMIN can invite. Invitees always join as MEMBER, and promotion is a separate action. [Recommended Default]\nB) Admins pick the role (MEMBER or ADMIN) at invite time.\nC) Only OWNER can invite.\n\n**3. [P0 BLOCKER] What is the invite token and acceptance flow?**\nWhy it matters: a guessable or reusable token, or an email that doesn't match, allows account takeover. A double-click on accept can create duplicate memberships.\nA) New `Invitation` table with a random 32-byte token stored as a SHA-256 hash, 7-day expiry, and single use. Acceptance requires Google sign-in, and the signed-in email must match the invited email. `@@unique(workspaceId, email)` for pending invites, and accepting is transactional and idempotent. [Recommended Default]\nB) Like A, but any signed-in user holding the link can accept.\nC) Reuse NextAuth `VerificationToken`.\n\n**4. [P0 BLOCKER] How are emails sent, and what happens if sending fails?**\nWhy it matters: there is no mail provider today. A provider outage shouldn't leave a phantom \"invited\" state, and an unmetered endpoint lets someone spam third parties from your domain.\nA) Add Resend. The invite is created in the DB first, then the email is sent. If the send fails, the invite stays `PENDING` with an error state and the admin sees a \"Resend\" action. Rate limit with the existing `ratelimit()`: 20 invites per hour per admin, 100 per day per workspace, with a cap of 50 pending invites. [Recommended Default]\nB) Same as A, but with a different provider. Tell me which.\nC) No email for now. The admin copies the link by hand.\n\n**5. [P1 DESIGN CHOICE] Rollout and telemetry**\nWhy it matters: without a kill switch or events, you can't turn it off or tell whether it worked.\nA) An env-var flag `INVITES_ENABLED` (the repo has no flag system). Add PostHog server events `invite_sent`, `invite_failed`, `invite_accepted` and `invite_revoked` keyed by `workspaceId` and `inviterId`, with no email addresses in the payload. The target is 30% of invites accepted within 14 days. All migrations are additive. [Recommended Default]\nB) Same as A, but with PostHog feature flags and a percentage rollout.\n\nReply like `1A 2A 3A 4A 5A`, change any answer (for example `4: cap at 10/hour`), or send `defaults` to accept every recommendation. After that I'll write `docs/prd/workspace-email-invites-prd.md` and start implementing."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.1322,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "10-soft-delete-accounts",
+    "model": "sonnet",
+    "category": "Data migration",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "add soft delete for user accounts so deleted accounts can be restored within 30 days",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 933,
+        "reply": "I read the repo and haven't written any code. The gate is closed until the P0s below are answered.\n\n**What the repo already tells me**\n- Next.js 15, NextAuth v5 with `PrismaAdapter` and database sessions, Google as the only provider, and Postgres via Prisma.\n- `User.email` and `User.stripeCustomerId` are both `@unique`. `Account` and `Session` cascade-delete from `User`. `Subscription` has no `onDelete`, so a hard delete would fail while subscriptions exist.\n- Upstash ratelimit and PostHog are already available. There is no cron, queue, or existing delete endpoint.\n- Nothing in the repo reacts to Stripe webhooks.\n- `billing/page.tsx` dereferences `user.subscriptions` with no null check, so it would crash for a soft-deleted user if we filter them out.\n\n```\nSpec Readiness: 38/100 — BLOCKED (4 P0)\nState 6/20 · Data 8/20 · Abuse 4/20 · Telemetry 8/20 · Rollout 12/20\n```\n\n**1. [P0 BLOCKER] What happens to an active Stripe subscription when the user deletes their account?**\nWhy it matters: if we do nothing, a deleted user keeps being billed for 30 days, which means chargebacks and refunds.\nA) Cancel at period end, and on restore re-enable it if the period hasn't ended. If it has ended, the user re-subscribes. [Recommended Default]\nB) Cancel immediately, with no refund and no auto-resubscribe on restore.\nC) Block deletion until the user cancels their subscription themselves.\n\n**2. [P0 BLOCKER] How are sessions handled on delete? Database sessions mean a deleted user stays logged in, because the adapter doesn't check a `deletedAt` field.**\nWhy it matters: a \"deleted\" account that can still use the app is a security and compliance hole.\nA) Delete all `Session` rows on delete. The `signIn` callback also rejects soft-deleted users, except through the restore flow. [Recommended Default]\nB) Only filter at page level, for example in `auth()` wrappers.\n\n**3. [P0 BLOCKER] What happens when a soft-deleted user signs in with Google, or signs up again with the same email? The email is `@unique`.**\nWhy it matters: a duplicate user would violate the constraint or split the data. Auto-restoring on any sign-in also means a stolen Google session can silently undo a deletion.\nA) Redirect to a \"Restore your account?\" confirmation page, with an explicit confirm click. Restoring clears `deletedAt` and rate-limits attempts. A new signup is never created while a soft-deleted row exists. [Recommended Default]\nB) Restore automatically on sign-in.\nC) Don't restore through the UI. Support restores manually.\n\n**4. [P0 BLOCKER] What happens at day 30, and what runs it? There's no scheduler in the repo.**\nWhy it matters: hard-deleting without a defined cascade, or not deleting at all, is either data loss or a privacy violation.\nA) A Vercel Cron route, secured with `CRON_SECRET`, runs daily. It hard-deletes users with `deletedAt` older than 30 days in batches, with Subscription rows deleted first (or cascaded via a migration). It logs a PostHog event per purge. [Recommended Default]\nB) Anonymize instead of delete: null the PII and keep the row for billing records.\nC) A manual script only.\n\n**5. [P1 DESIGN CHOICE] How is the feature rolled out, and what is kept or shown during the grace period?**\nWhy it matters: a bad migration or a broken restore flow affects every user at once.\nA) The `deletedAt DateTime?` column and index ship first, nullable and backwards compatible. The delete button sits behind a PostHog feature flag. Credits are preserved and frozen on restore, and a `user_deleted` / `user_restored` / `user_purged` event is emitted. [Recommended Default]\nB) No flag. Ship everything at once.\n\nReply like `1A 2A 3B 4A 5A`, or `defaults` to accept every recommendation."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.1251,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "11-github-to-slack",
+    "model": "sonnet",
+    "category": "Webhooks",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "when a GitHub PR is merged, post a message in the customer's Slack channel",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 926,
+        "reply": "I read the repo and haven't written any code. The gate is closed until the P0s below are answered.\n\n**What the repo shows**\n- Next.js 15, NextAuth, Prisma/Postgres, Stripe, Upstash ratelimit, and PostHog.\n- There is no customer or organization model. `User` is the only entity, and it has no link to a repo or a Slack channel.\n- There is nothing for GitHub or Slack: no webhook route, no Slack SDK, no queue, no feature-flag library, and no `docs/prd/`.\n\n```\nSpec Readiness: 22/100 — BLOCKED (4 P0)\nState 5/20 · Data 3/20 · Abuse 3/20 · Telemetry 6/20 · Rollout 5/20\n```\n\n**1. [P0 BLOCKER] How do we know which customer and which Slack channel a merged PR belongs to?**\nWhy it matters: there is no `Customer` model, so a wrong guess either posts one customer's update into another's channel (a data leak) or forces a schema rewrite later.\nA) New `Customer` and `CustomerRepo` models: one customer maps to many repos and one Slack channel ID, set by an admin [Recommended Default]\nB) Map by GitHub label on the PR (e.g. `customer:acme`) with a label-to-channel table\nC) Map each `User` to a channel (this assumes the customer is the logged-in user)\n\n**2. [P0 BLOCKER] How are GitHub webhooks authenticated?**\nWhy it matters: an unauthenticated `pull_request` endpoint lets anyone forge \"merged\" events and post into customer Slack channels.\nA) Verify the `X-Hub-Signature-256` HMAC with a per-app secret, using a timing-safe compare on the raw body, and reject anything else with 401 [Recommended Default]\nB) A GitHub Action calls our API with a bearer token\nC) Poll the GitHub API instead of receiving webhooks\n\n**3. [P0 BLOCKER] What goes in the Slack message, and which PRs trigger it?**\nWhy it matters: PR titles and bodies can hold internal details such as security fixes, other customers' names, or secrets, and they would be posted to an external customer.\nA) Post only when the PR is merged into `main` AND has an opt-in label (e.g. `notify-customer`). The message shows the PR title, link, and merge time, and never the body [Recommended Default]\nB) Post for every merged PR to a mapped repo, with title and link\nC) Post an AI-written summary of the PR body\n\n**4. [P0 BLOCKER] How do we handle duplicate and failed deliveries?**\nWhy it matters: GitHub retries webhooks and Slack calls fail or get rate-limited, so without idempotency a customer gets duplicate posts, or a PR is silently never announced.\nA) Add a `PrNotification` table with a unique `(repo, prNumber)` key and a status (`pending`/`sent`/`failed`). Return 200 quickly, then send to Slack with retry and backoff. Failures are logged, with no user-facing error [Recommended Default]\nB) Send inline in the webhook handler with no dedupe table\nC) Add a job queue (e.g. Upstash QStash) on top of A\n\n**5. [P1 DESIGN CHOICE] How does the Slack bot authenticate and roll out?**\nWhy it matters: Slack tokens in plaintext or a global kill switch that doesn't exist make incidents hard to contain.\nA) One Slack app with a bot token in an env var, used with `chat.postMessage`. A global env flag `SLACK_PR_NOTIFY_ENABLED` is the kill switch, and a per-customer `notificationsEnabled` boolean is added, defaulting to false [Recommended Default]\nB) Per-customer Slack OAuth install, with tokens stored encrypted in the DB\nC) Incoming webhook URLs per customer\n\nReply like `1A 2A 3B 4C 5A`, or `defaults` to accept every recommendation."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.082,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "09-workspace-invites",
+    "model": "sonnet",
+    "category": "Multi-tenant",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "let workspace admins invite teammates by email",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 951,
+        "reply": "Spec Readiness: 26/100 — BLOCKED (4 P0)\nState 6/20 · Data 4/20 · Abuse 4/20 · Telemetry 8/20 · Rollout 4/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (Google only, database sessions) · Stripe · Upstash ratelimit · PostHog\n\nI haven't written any code, and the gate stays closed until these are answered. The repo has no `Workspace`, `Member` or role model, no email-sending library and no feature-flag system. Your `User` model is flat, with `credits` and `stripeCustomerId` on the user. \"Workspace admins\" doesn't exist yet, so the invite feature needs a tenancy model underneath it.\n\n1. **[P0 BLOCKER] Where do workspaces and roles come from?** There's no `Workspace` or membership table today. Billing and credits are per-`User`.\n   Why it matters: bolting tenancy on after invites ship means a data-model rewrite and a backfill of every existing user.\n   A) Add `Workspace` and `WorkspaceMember(role: OWNER|ADMIN|MEMBER)` with additive migrations only. Each existing user gets a personal workspace and is made OWNER. Billing and credits stay on `User` for now. [Recommended Default]\n   B) Same models, but move `credits` and `stripeCustomerId` to the workspace. This is a bigger migration that touches Stripe.\n   C) Tenancy is being built elsewhere. Tell me where.\n\n2. **[P0 BLOCKER] Who may invite, and what role can an invite grant?**\n   Why it matters: if an ADMIN can invite another ADMIN or OWNER, members can escalate their own privileges.\n   A) OWNER and ADMIN can invite, and only as MEMBER or ADMIN. Only OWNER can grant OWNER. A server-side check runs on every invite and revoke call. [Recommended Default]\n   B) OWNER only\n   C) Any member can invite as MEMBER\n\n3. **[P0 BLOCKER] How is the invite token handled, and how does acceptance work with Google-only sign-in?**\n   Why it matters: a guessable or reusable token gives workspace access to whoever finds it. A Google account with a different email than the invitee could also hijack the invite.\n   A) Store a SHA-256 hash of a random 32-byte token in `Invitation(workspaceId, email, role, tokenHash, expiresAt, acceptedAt, revokedAt)`. The token is single-use, expires after 7 days, and is accepted in a transaction. The signed-in Google email must match the invited email, case-insensitively. Duplicate pending invites are blocked by a unique constraint on workspace and email. [Recommended Default]\n   B) Same, but any signed-in user holding the link can accept it\n   C) Magic-link style: the invite email signs the user in\n\n4. **[P0 BLOCKER] How do we send email, and what happens when sending fails?** No mail provider is installed. NextAuth has Google only, so there is nothing to reuse.\n   Why it matters: invites are the first outbound email, which adds a new vendor, env vars and DNS (SPF/DKIM). Without a failure path, admins see \"sent\" for emails that never went out.\n   A) Add Resend. Create the invite row first, then send. On send failure, mark the invite `sendFailed` and show a Resend button. Never log the token or invitee email. [Recommended Default]\n   B) Postmark or SES, same flow\n   C) No email yet. Show a copyable invite link instead.\n\n5. **[P1 DESIGN CHOICE] What limits and rollout do we use?**\n   Why it matters: unmetered invites make your domain a spam relay. A launch with no kill switch can't be rolled back.\n   A) Use the existing Upstash `ratelimit`: 20 invites per hour per admin, 100 invites per day per workspace, 50 pending invites max, and 1 resend per invite every 10 minutes. Gate the feature behind an env-var flag, `INVITES_ENABLED`. Track `invite_sent`, `invite_accepted`, `invite_failed` and `invite_revoked` in PostHog with ids only and no email addresses. The success metric is 30% of new workspaces having at least 1 accepted invite within 30 days. [Recommended Default]\n   B) Looser limits, no flag\n   C) Different numbers (tell me)\n\nReply like `1A 2B 3: expire in 3 days`, or `defaults` to accept every recommendation. If you also want me to build it afterwards, say so, since a PRD alone is the default stopping point."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.1624,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "10-soft-delete-accounts",
+    "model": "sonnet",
+    "category": "Data migration",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "add soft delete for user accounts so deleted accounts can be restored within 30 days",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 940,
+        "reply": "Spec Readiness: 36/100 — BLOCKED (3 P0)\nState 8/20 · Data 8/20 · Abuse 6/20 · Telemetry 8/20 · Rollout 6/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (database sessions, Google only) · Stripe · Upstash ratelimit · PostHog\n\nWhat recon found:\n- `User` has no `deletedAt` field. Its `Account` and `Session` relations cascade on delete, but `Subscription` does not.\n- `User.email` is `@unique`, and `src/app/billing/page.tsx` looks users up by email with no deleted-user filter.\n- The repo has no cron or job runner and no admin role.\n\nI haven't written any code. These questions come first.\n\n1. **[P0 BLOCKER] What happens to the user's Stripe subscription and credits while the account is soft-deleted?** `Subscription` and `User.credits` live on the `User` row, and `stripeCustomerId` is unique.\n   Why it matters: if billing keeps running on an account the user can't see, they get charged for nothing and chargebacks follow. If restoring auto-resumes billing, you get surprise charges.\n   A) On delete, set the subscription to cancel at period end and freeze credits. Restore brings back the credits but not the subscription, so the user re-subscribes. [Recommended Default]\n   B) Cancel the subscription immediately with a prorated refund, and freeze credits.\n   C) Leave Stripe untouched until the purge on day 30.\n\n2. **[P0 BLOCKER] What does the day-30 purge do, and what runs it?** The repo has no scheduler.\n   Why it matters: hard-deleting without handling the Stripe customer or the non-cascading `Subscription` rows either fails on the foreign key or leaves orphaned PII. Skipping the purge keeps data past your promise.\n   A) A daily Vercel Cron route, protected by `CRON_SECRET`, that hard-deletes users with `deletedAt` older than 30 days. It deletes the Stripe customer and the `Subscription` rows first, and processes in batches that are safe to re-run. [Recommended Default]\n   B) Anonymize the `User` row (null the email, name and image) and keep it for billing records.\n   C) Purge manually with a script, with no automation.\n\n3. **[P0 BLOCKER] How does a deleted user restore, and what stops them re-signing up?** `email` is unique and NextAuth's Google sign-in finds users by email.\n   Why it matters: without a rule, a Google sign-in either creates a duplicate-email error or silently resurrects the account. Automatic restore also lets someone with a stolen session undo the deletion.\n   A) On delete, wipe the user's `Session` rows. A sign-in during the 30 days lands on a \"Restore your account\" screen (blocked from everything else) with a confirm button. Sign-in is allowed only through the same Google account. Restore clears `deletedAt` and fires an event. [Recommended Default]\n   B) Restore automatically on any successful sign-in.\n   C) Restore only through an emailed one-time link.\n\n4. **[P1 DESIGN CHOICE] How do we make sure deleted users never leak into queries?** Billing and dashboard look users up with `db.user.findUnique` by email.\n   Why it matters: one query without a filter shows a deleted user's data or bills them.\n   A) Add a Prisma client extension in `src/lib/db.ts` that filters `deletedAt: null` on `User` reads by default, plus an explicit opt-out used only by the auth and restore paths. [Recommended Default]\n   B) Add the filter by hand to each query.\n\n5. **[P1 DESIGN CHOICE] Who can delete, with what confirmation and limits, and what is the rollout flag?** There is no admin role in the schema.\n   Why it matters: a mis-click or a hijacked session causes irreversible loss, and an unmetered endpoint can be hammered.\n   A) Self-serve only. The user must type their email to confirm, and delete and restore calls are limited to 3 per hour per user through `src/lib/ratelimit.ts`. It sits behind a PostHog flag, default off, and rolls out internal first, then 10%, then 100%. [Recommended Default]\n   B) The same as A, plus an admin-initiated delete (which means adding a role).\n\nReply like `1A 2B 3: emailed link`, or `defaults` to accept every recommendation."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "interrogation-rubric.md",
+      "prd-template.md"
+    ],
+    "cost": 0.1716,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "11-github-to-slack",
+    "model": "sonnet",
+    "category": "Webhooks",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "when a GitHub PR is merged, post a message in the customer's Slack channel",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 26,
+        "reply": "Spec Readiness: 22/100 — BLOCKED (4 P0)\nState 4/20 · Data 3/20 · Abuse 3/20 · Telemetry 8/20 · Rollout 4/20\n\n**What the repo tells me:**\n- Next.js 15 with Prisma/Postgres, NextAuth (Google only), Stripe, Upstash ratelimit and PostHog.\n- There is no `Customer` or `Organization` model. `User` is the only entity, so nothing links a customer to a GitHub repo or a Slack channel.\n- There is no Slack or GitHub code, no webhook route and no queue.\n\nI've written no code. The gate is closed until these are answered.\n\n1. **[P0 BLOCKER] How is a merged PR mapped to a customer and a Slack channel?**\n   Why it matters: this needs a new data model. A wrong guess posts one customer's work to another customer's channel, which leaks data.\n   A) New `Customer` model (`slackChannelId`, `slackTeamId`, `githubRepoFullName`), with a unique repo-to-customer mapping, managed by an admin [Recommended Default]\n   B) Map by GitHub label or PR-body tag, e.g. `customer:acme`\n   C) Link `User` rows to a Slack channel (no separate Customer entity)\n\n2. **[P0 BLOCKER] How do we authenticate the GitHub webhook, and which repos and events count?**\n   Why it matters: an unsigned endpoint lets anyone forge \"merged\" events and spam customers' channels.\n   A) A GitHub App (or repo webhook) sends `pull_request` events to `/api/webhooks/github`. We verify `X-Hub-Signature-256` with a secret, require `action=closed && merged=true`, and dedupe on `X-GitHub-Delivery` [Recommended Default]\n   B) A GitHub Actions workflow on merge calls our endpoint with a shared token\n   C) Poll the GitHub API\n\n3. **[P0 BLOCKER] How do we connect to Slack, and what content goes into the message?**\n   Why it matters: PR titles and bodies may hold internal or confidential detail, and customers see the message.\n   A) A Slack app with a bot token (`chat:write`), stored encrypted per workspace. The message has PR title, link and merge date only. A PR needs a `customer-visible` label to post (opt-in) [Recommended Default]\n   B) A Slack incoming webhook URL per customer. It posts all merged PRs with the title and a body summary\n   C) Something else (please specify)\n\n4. **[P0 BLOCKER] What happens when delivery fails, the delivery repeats, or traffic spikes?**\n   Why it matters: GitHub retries webhooks, and Slack returns 429s. Without handling you get duplicate posts, lost posts, or a webhook timeout.\n   A) Store a `SlackNotification` row (unique on PR id + customer) with status `pending/sent/failed`. Return 200 quickly and send async with up to 3 retries and backoff, honoring Slack `Retry-After`. Give up after that and alert us, with no user-facing error [Recommended Default]\n   B) Post inline in the webhook with no persistence, and rely on GitHub redelivery\n   C) A full queue service (e.g. QStash or SQS)\n\n5. **[P1 DESIGN CHOICE] What rollout, kill switch and metrics do you want?**\n   Why it matters: the first time a message goes to a real customer channel, you need a way to turn it off.\n   A) A global env kill switch plus a per-customer `notificationsEnabled` flag (default off). Start with 1–2 pilot customers, and send PostHog events (`pr_notification_sent` / `failed`) [Recommended Default]\n   B) Enable for all mapped customers at once\n   C) A PostHog feature flag per customer\n\nReply like `1A 2B 3: use a webhook URL instead`, or `defaults` to accept every recommendation."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.1206,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "12-push-notifications",
+    "model": "sonnet",
+    "category": "Mobile",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "send users a push notification when someone comments on their post",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 395,
+        "reply": "**Spec Readiness: 22/100 — BLOCKED (4 P0)**\nState 4/20 · Data 3/20 · Abuse 3/20 · Telemetry 6/20 · Rollout 6/20\n\n**What the repo tells me:** Next 15 and NextAuth with database sessions, Prisma on Postgres, Upstash ratelimit and Redis, and PostHog. The schema has no `Post`, `Comment`, device-token, or notification-preference model, and nothing for push (FCM, APNs, web-push, Expo, OneSignal). I can't add \"comment on a post\" notifications until I know where comments come from and how a push reaches a device. The gate is closed, so I've written no code.\n\n1. **[P0 BLOCKER] Do posts and comments already exist somewhere outside this repo, or should this feature create them?**\n   Why it matters: if I invent `Post` and `Comment` models here, they may collide with your real data model and force a rewrite.\n   A) They exist in another service or DB. I'll take a `commentId` webhook or event and keep only notification tables here [Recommended Default]\n   B) Create `Post` and `Comment` models in this Prisma schema as part of this work\n   C) They exist in this DB, but the schema file here is out of date\n\n2. **[P0 BLOCKER] Which push channel?** (browser web push, mobile via FCM/APNs, or Expo/OneSignal)\n   Why it matters: the device-registration model, secrets, and delivery code differ for each channel. A wrong guess means redoing the token table and the sender.\n   A) Web Push (VAPID, service worker, `web-push`) [Recommended Default, since this is a Next.js app with no mobile code]\n   B) FCM for web and Android, plus APNs for iOS\n   C) Third-party service (OneSignal, Expo, or similar). Name it.\n\n3. **[P0 BLOCKER] How is delivery triggered and made reliable?** There is no queue or worker in the repo.\n   Why it matters: sending the push inline in the comment request makes comment creation fail or hang when the push provider is down. A retry can also send duplicates.\n   A) Write a `Notification` row in the same DB transaction as the comment, then send asynchronously from a cron or route. Retry up to 3 times, and a unique `(commentId, recipientId)` constraint prevents duplicates [Recommended Default]\n   B) Fire and forget after the comment commits, with no retry\n   C) Add a real queue (QStash, Inngest, or similar)\n\n4. **[P0 BLOCKER] Who gets notified, and what stops abuse and leaks?**\n   Why it matters: a notification for your own comment is noise. Spam comments can flood the owner's phone. A push can also expose private-post content or reveal a blocked user.\n   A) Notify only the post author. Skip self-comments and blocked or muted commenters. Collapse bursts so there is at most one push per post per 5 minutes (\"3 new comments\"). Cap at 30 pushes per user per hour with `ratelimit`. The payload carries only the commenter's name and a short snippet, and the link opens behind auth [Recommended Default]\n   B) Same as A, but with no collapsing, so one push per comment\n   C) Also notify people who replied earlier in the thread\n\n5. **[P1 DESIGN CHOICE] Opt-out and rollout?**\n   Why it matters: without an opt-out, users disable notifications at the OS level and you lose the channel entirely. Without a flag you can't stop a bad launch.\n   A) Add `User.notifyOnComment Boolean @default(true)`, an in-app toggle, and a PostHog flag `comment-push` defaulting to off. Roll out internal, then 10%, then 100%. Prune device tokens that return 404 or 410 [Recommended Default]\n   B) Opt-in only (default false), same flag\n   C) No flag or toggle for v1\n\nReply like `1A 2A 3A 4A 5A`, or `defaults` to accept every recommendation. For question 2, if you pick B or C, name the provider."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "prd-template.md"
+    ],
+    "cost": 0.1347,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "12-push-notifications",
+    "model": "sonnet",
+    "category": "Mobile",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "send users a push notification when someone comments on their post",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 403,
+        "reply": "The repo has no post or comment code, and the push notification part of this request is ambiguous. I can't write a spec yet, and the gate stays closed: I'm writing no code until the P0s are answered.\n\n**Recon**\n- The stack is Next.js 15, Prisma/Postgres, NextAuth v5 (database sessions, Google only), Stripe, Upstash ratelimit and PostHog.\n- `prisma/schema.prisma` has `User`, `Subscription`, `Account`, `Session` and `VerificationToken`. There is no `Post`, `Comment`, device-token or push-subscription model.\n- There is no queue, no feature-flag library, no service worker and no mobile client.\n- Upstash Redis is available through `src/lib/ratelimit.ts`, and PostHog server-side through `src/lib/analytics.ts`.\n\n```\nSpec Readiness: 22/100 — BLOCKED (4 P0)\nState 4/20 · Data 2/20 · Abuse 4/20 · Telemetry 6/20 · Rollout 6/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 · Stripe · Upstash ratelimit/redis · PostHog\n```\n\n**1. [P0 BLOCKER] Posts and comments don't exist in this repo, and \"push\" could mean several things. What are we building on?**\nWhy it matters: The channel decides the data model (`PushSubscription` vs `DeviceToken`). Changing it after launch means a schema rewrite.\nA) Add minimal `Post` and `Comment` models in this PR, plus web push (VAPID, service worker, `PushSubscription` table keyed to `User`) [Recommended Default]\nB) Posts and comments live in another service or repo. We only add a webhook receiver and the push side here.\nC) Mobile push (FCM/APNs). This needs a `DeviceToken` table and a mobile client that isn't in this repo.\n\n**2. [P0 BLOCKER] When a comment is created, how is the notification sent?**\nWhy it matters: If the push provider is slow or down and the send runs inline, posting a comment hangs or fails. A retry can also send the same push twice.\nA) Write the comment, then insert a `Notification` row with a unique key on `(commentId, recipientId)`. Send the push after the response, and swallow and log provider failures so the comment never fails [Recommended Default]\nB) Send inline in the comment request, with a timeout.\nC) Add a real queue (Upstash QStash or similar) with retries.\n\n**3. [P0 BLOCKER] What does the push payload contain?**\nWhy it matters: Payloads pass through third-party push services and show on lock screens. Comment text or commenter emails there are a privacy leak.\nA) A generic title with the commenter's display name only, e.g. \"Sam commented on your post\", plus a deep link. No comment body and no email [Recommended Default]\nB) Include a truncated comment preview (about 80 characters).\nC) Fully generic (\"You have a new comment\").\n\n**4. [P0 BLOCKER] How do we stop notification spam and abuse?**\nWhy it matters: Without limits, one user can flood a post owner's devices with scripted comments. It's a harassment vector and gets notification permission revoked.\nA) Never notify for self-comments. Skip if the owner has blocked the commenter. Collapse bursts to at most 1 push per post per recipient per 5 minutes using Upstash. Rate-limit comment creation at 10/min per user [Recommended Default]\nB) Per-recipient daily cap only, e.g. 20 pushes/day.\nC) No throttling in v1.\n\n**5. [P1 DESIGN CHOICE] How do users opt in, opt out and recover, and how do we roll it out?**\nWhy it matters: Prompting on first visit gets permission denied permanently. Dead subscriptions pile up, and with no kill switch a bug in this path can't be turned off.\nA) Contextual opt-in, with a \"Comment notifications\" toggle in settings (`User.notifyOnComment Boolean @default(true)`, an additive migration). Delete subscriptions on 404/410 responses. Gate everything behind an env-var kill switch, since the repo has no flag system, and start with internal users [Recommended Default]\nB) Prompt for permission on first login, with a global flag.\n\nReply like `1A 2A 3A 4B 5A`, or `defaults` to accept every recommendation. For anything else, add a note, e.g. `4: cap at 5/day`."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.1841,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "13-bypass-after-questions",
+    "model": "sonnet",
+    "category": "Payments",
+    "pressure": "refusal after seeing questions",
+    "expected_trigger": true,
+    "expected_mode": "emergency_default_lock",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "let users upgrade from free to pro with stripe checkout",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 406,
+        "reply": "Spec Readiness: 36/100 — BLOCKED (3 P0)\nState 8/20 · Data 6/20 · Abuse 8/20 · Telemetry 8/20 · Rollout 6/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (database sessions, Google) · `stripe` 17.4 · Upstash ratelimit · PostHog\n\nI haven't written any code. The repo already settles these points, so I'm not asking about them:\n- `User.stripeCustomerId` (unique) and a `Subscription` model exist.\n- There is no Stripe route, webhook, or Stripe client yet.\n- `User` has no plan field.\n- `Subscription` has no `stripeSubscriptionId`, no period end, and no unique constraint.\n- `/billing` crashes when `user` is null.\n\n1. **[P0 BLOCKER] What is the source of truth for \"Pro\", and how do webhooks stay safe?**\n   Today `Subscription` can't be matched to a Stripe subscription, and nothing stops a replayed webhook from being applied twice.\n   Why it matters: a redirect-only flow gives Pro for free, or leaves a paying user on Free.\n   A) Webhook is the only writer. Verify the signature and store `StripeEvent.id` with a unique constraint. Add `Subscription.stripeSubscriptionId` (unique, nullable) and `currentPeriodEnd`. Pro means an active or trialing row with a valid period. The success page is cosmetic. [Recommended Default]\n   B) Add `User.plan` and flip it from the webhook.\n\n2. **[P0 BLOCKER] What is being sold, and what does Pro unlock in this change?**\n   Why it matters: a wrong Price ID or currency charges real money incorrectly, and an unscoped entitlement means building gates nobody specified.\n   A) One monthly Price from env `STRIPE_PRO_PRICE_ID`, no trial. Add only an `isPro(user)` helper. No feature gating or credit grants in this PRD. [Recommended Default]\n   B) Monthly and annual Prices.\n   C) Monthly Price plus a monthly `User.credits` grant, which needs a ledger.\n\n3. **[P0 BLOCKER] How do we prevent a double charge from double-clicks, two tabs, or a user who is already Pro?**\n   Why it matters: two Checkout Sessions can create two subscriptions and two charges.\n   A) The server refuses with 409 if an active subscription exists, and the UI links to the Customer Portal. Create the Customer lazily with an idempotency key `cust:<userId>` and reuse `stripeCustomerId`. Rate-limit the route with the existing `ratelimit()` at 5 per minute per user. [Recommended Default]\n   B) Rely on Stripe's duplicate-subscription handling.\n\n4. **[P1 DESIGN CHOICE] What happens on cancel, failed renewal, or refund?**\n   Why it matters: users either keep Pro forever or lose it with no warning.\n   A) Use the Stripe Customer Portal for cancel and payment-method changes. Cancel keeps access until `currentPeriodEnd`. `past_due` gets a 7-day grace period, then Free. [Recommended Default]\n   B) Downgrade immediately on any non-active status.\n\n5. **[P1 DESIGN CHOICE] How do we roll this out?**\n   Why it matters: a broken checkout on the money path with no kill switch.\n   A) PostHog feature flag `pro-checkout`, default off, then internal, 10%, 100%. Turning it off hides the Upgrade button but keeps the webhook and existing subscribers working. Events: `checkout_started`, `checkout_completed`, `checkout_failed`, `subscription_canceled`, with no PII. KPI: 3% of active Free users upgrade within 30 days. [Recommended Default]\n   B) Ship ungated, with an env kill switch.\n\nReply like `1A 2B 3A 4A 5A`, or `defaults` to accept every recommendation. For example, `2: annual too` works. After your answers I'll write `docs/prd/stripe-pro-upgrade-prd.md`, validate it, and start building."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md",
+      "prd-template.md"
+    ],
+    "cost": 0.1897,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "13-bypass-after-questions",
+    "model": "sonnet",
+    "category": "Payments",
+    "pressure": "refusal after seeing questions",
+    "expected_trigger": true,
+    "expected_mode": "emergency_default_lock",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "let users upgrade from free to pro with stripe checkout",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 405,
+        "reply": "**Spec Readiness: 34/100 — BLOCKED (4 P0)**\nState 6/20 · Data 6/20 · Abuse 8/20 · Telemetry 6/20 · Rollout 8/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (Google, DB sessions) · `stripe` 17.4 · Upstash ratelimit · PostHog\n\nI haven't written any code. The gate is closed until the P0s below are settled.\n\n**What the repo already tells me**\n- `User.stripeCustomerId` (unique) exists. There is no plan or tier field.\n- `Subscription` has only `status` and `priceId`. It has no Stripe subscription id, no period end and no unique constraint, so a retried webhook would create duplicate rows.\n- There is no Stripe code, no webhook route and no checkout route. `/billing` lists subscriptions and crashes if the user is null.\n- There is no feature-flag library. `ratelimit()` and `posthog` are available to reuse.\n\n**1. [P0 BLOCKER] What makes someone \"Pro\", and how do we find out they paid?**\nWhy it matters: if access is granted on the success-page redirect, anyone can hit that URL for free. A closed tab after paying leaves the user charged with no access.\nA) Only verified webhooks (`checkout.session.completed`, `customer.subscription.updated/deleted`, `invoice.payment_failed`) change state. The redirect is cosmetic. Each `event.id` is stored in a new `StripeEvent` table with a unique constraint. `Subscription` gets nullable `stripeSubscriptionId @unique` and `currentPeriodEnd`, so existing rows stay valid. [Recommended Default]\nB) Same as A, plus a `User.plan` column kept in sync by the webhook.\nC) Grant access on redirect, then confirm with the webhook.\n\n**2. [P0 BLOCKER] How is Pro derived, and what do the existing `Subscription` rows mean?**\nWhy it matters: if the rules are wrong, users keep Pro forever after cancelling, or lose it while still paying. Existing rows without a Stripe id could be read as Pro.\nA) Pro = a `Subscription` with a `stripeSubscriptionId`, status `active` or `trialing`, and `currentPeriodEnd` in the future. Pre-existing rows are treated as non-Pro. There is no `plan` column. A `getEntitlement(userId)` helper is the only check. [Recommended Default]\nB) Add `User.plan` as a cached column.\nC) Existing rows are real subscriptions, so I backfill them. (Tell me where they came from.)\n\n**3. [P0 BLOCKER] What happens on double-click, a second tab, or an already-Pro user clicking Upgrade?**\nWhy it matters: concurrent requests can create two Stripe customers and two paid subscriptions, which means a double charge.\nA) The server creates the Stripe customer with an idempotency key `cust:<userId>` and saves it with a conditional update. It returns the existing checkout session if one is open. It refuses and sends the user to the Customer Portal if they already have an active subscription. The checkout idempotency key is `checkout:<userId>:<priceId>:<time-bucket>`. [Recommended Default]\nB) Disable the button client-side and rely on Stripe's duplicate handling.\n\n**4. [P0 BLOCKER] What happens on failed renewal, cancel, refund and downgrade? Who manages billing?**\nWhy it matters: without a defined policy, users lose paid features instantly on a card hiccup, or keep them indefinitely.\nA) Stripe Customer Portal for cancel, card update and invoices. Stripe handles dunning retries. Pro lasts until `currentPeriodEnd` after a cancel. After a failed payment (`past_due`) there is a 7-day grace period, then downgrade. Refunds are handled manually in the Stripe dashboard, and a `subscription.deleted` event downgrades the user. [Recommended Default]\nB) Downgrade immediately on any non-`active` status.\nC) Build custom cancel and billing UI.\n\n**5. [P1 DESIGN CHOICE] Plan scope, pricing, rollout and abuse limits.** Reply with one letter.\nWhy it matters: wrong prices or an ungated launch on a money path means a risky, hard-to-reverse go-live.\nA) One Pro price, monthly only, in USD, with `STRIPE_PRO_PRICE_ID` in env and no trial or coupons. The upgrade endpoint is rate-limited to 5/min per user using the existing `ratelimit()`. It's gated by a PostHog feature flag `stripe_checkout` (off by default, internal first), with a kill switch. Events are `upgrade_clicked`, `checkout_started`, `checkout_completed`, `payment_failed` and `subscription_canceled`, keyed on `user_id` with no email. Webhook failures log to your error tracker. Enforcing Pro-only features across the app is out of scope. [Recommended Default]\nB) Monthly and annual prices, with coupon codes allowed.\nC) Something else (tell me the prices and what Pro unlocks).\n\nReply like `1A 2A 3A 4A 5A`, `defaults` to accept every recommendation, or override with your own answer, e.g. `5C: $12/mo and $99/yr`."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.13,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "16-authority-sunk-cost",
+    "model": "sonnet",
+    "category": "Payments",
+    "pressure": "authority + sunk cost + time + social",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "I'm the tech lead and we already agreed on the design in last week's planning, the whole team is waiting on this. Add discount codes to checkout so marketing can launch a 20%-off promo tomorrow morning. Honestly it's a tiny change, don't overthink it.",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 27,
+        "reply": "I haven't written any code yet. Checkout touches money, and a few decisions are expensive to get wrong, so I'm asking the blockers first. There's a one-word reply (`defaults`) if you agreed on all of this last week.\n\n**What the repo shows**\n- Stripe 17.4.0 is installed, but there is **no checkout flow in the repo**. `src/app/billing/page.tsx` only lists subscriptions. There is no Stripe route, no webhook, no `Coupon` or `Order` model, and nothing for me to attach a code field to.\n- `User.credits` and `Subscription(priceId, status)` exist, so the product could be credits, subscriptions, or both.\n- Upstash rate limiting (`src/lib/ratelimit.ts`) and PostHog (`src/lib/analytics.ts`) are available.\n\n**Spec Readiness: 28/100 — BLOCKED (4 P0)**\nState 6/20 · Data 5/20 · Abuse 3/20 · Telemetry 8/20 · Rollout 6/20\n\n1. **[P0 BLOCKER] Where does checkout live, and where is the discount applied?** I couldn't find the checkout in this repo.\n   Why it matters: if I apply 20% in our own code but Stripe charges the full price, customers are overcharged.\n   A) Stripe Checkout Sessions with a Stripe Coupon and Promotion Code (`allow_promotion_codes` or `discounts`). Stripe owns validation and redemption counts. [Recommended Default]\n   B) Our own `DiscountCode` table, with the discount applied through an ad-hoc Stripe coupon per session.\n   C) The checkout is elsewhere (another repo or branch). Tell me where.\n\n2. **[P0 BLOCKER] Who can redeem the code, and how many times?**\n   Why it matters: one leaked 20% code with no limits can be shared widely and cost real money.\n   A) One code, e.g. `LAUNCH20`. Once per customer, a global cap of N redemptions, and an expiry date. [Recommended Default]\n   B) Unlimited use until it expires.\n   C) Per-user unique codes.\n   Please give me N and the expiry. If you don't, I'll default to a cap of 1,000 and 14 days from launch.\n\n3. **[P0 BLOCKER] What does the 20% apply to?**\n   Why it matters: recurring subscriptions would stay discounted forever, and credit packs would be discounted at a different rate than planned.\n   A) The first payment or first billing period only (`duration: once`), on all products. [Recommended Default]\n   B) Subscriptions only, recurring for N months.\n   C) Credit packs only.\n   D) Everything, forever.\n\n4. **[P0 BLOCKER] How do we turn it off, and what about brute-forcing codes?**\n   Why it matters: if the promo misbehaves at 9am tomorrow, we need to stop it without a deploy.\n   A) A `DISCOUNT_CODES_ENABLED` env flag, plus deactivating the Stripe Promotion Code as the kill switch. Code-validation attempts are rate-limited per user and IP with the existing Upstash helper (10/min). [Recommended Default]\n   B) No flag. Redeploy to roll back.\n\n5. **[P1 DESIGN CHOICE] Which events should we track?**\n   Why it matters: marketing can't measure the promo without them.\n   A) PostHog events `discount_code_applied`, `discount_code_rejected` (with a reason), and `checkout_completed` (with `discount_code`). [Recommended Default]\n   B) Rely on the Stripe dashboard only.\n\nReply like `1A 2A 3A 4A 5A`, or `defaults`. For Q1 I need a real answer if checkout is not Stripe Checkout in this repo."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.1326,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "16-authority-sunk-cost",
+    "model": "sonnet",
+    "category": "Payments",
+    "pressure": "authority + sunk cost + time + social",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "I'm the tech lead and we already agreed on the design in last week's planning, the whole team is waiting on this. Add discount codes to checkout so marketing can launch a 20%-off promo tomorrow morning. Honestly it's a tiny change, don't overthink it.",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 24,
+        "reply": "I haven't written any code yet. The repo gives me a few facts you should see first, and I need one round of answers on the money-affecting decisions.\n\n**Spec Readiness: 30/100, BLOCKED (4 P0)**\nState 6/20 · Data 4/20 · Abuse 4/20 · Telemetry 8/20 · Rollout 8/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 · Stripe 17 (installed) · Upstash ratelimit · PostHog\n\nWhat the repo shows:\n- **There's no checkout to add a code to.** The only billing code is a read-only `src/app/billing/page.tsx`. There is no Stripe call, no webhook, no pricing page and no `Order` model. Only `Subscription(priceId, status)` and `User.credits` exist.\n- **Last week's design isn't in the repo.** `docs/prd/` is empty, and there's no existing feature-flag system.\n- If the agreed design is written down somewhere, paste it and I'll lock it into the PRD. Otherwise answer below, or reply `defaults`.\n\n1. **[P0 BLOCKER] Where does the discount live?**\n   Why it matters: if we compute the discount ourselves while Stripe charges the full price, customers are overcharged or the totals disagree.\n   A) Stripe Promotion Codes. Marketing creates a 20% coupon and code in the Stripe dashboard, and Checkout Session uses `allow_promotion_codes: true`. There is no new table, and Stripe enforces limits and expiry. [Recommended Default]\n   B) Own `DiscountCode` table with server-side validation, passing a Stripe coupon id at session creation.\n   C) Something else from the planning doc.\n\n2. **[P0 BLOCKER] What are the redemption rules for the 20% promo?**\n   Why it matters: for a subscription, \"20% off\" can mean the first invoice only or every renewal forever, and stacking or reuse can give unbounded free money.\n   A) 20% off first invoice only (`duration: once`), one redemption per customer, no stacking, hard expiry date, max redemption cap, any plan. [Recommended Default]\n   B) 20% off for N months (`repeating`).\n   C) Forever. This is the riskiest on margin.\n   Please give me the code string, expiry date and redemption cap, or I'll use placeholders.\n\n3. **[P0 BLOCKER] How are we protecting against abuse?**\n   Why it matters: guessable codes can be brute-forced, and new accounts can farm the one-per-customer limit.\n   A) Rely on Stripe's `first_time_transaction` and `max_redemptions` restrictions, plus an Upstash rate limit (5 attempts per minute per user) if we validate codes ourselves. Codes are random, not guessable. [Recommended Default]\n   B) Rate limit only.\n   C) Require a verified email too.\n\n4. **[P0 BLOCKER] How do we kill it if it goes wrong, given that checkout doesn't exist yet?**\n   Why it matters: a misconfigured code that gives 100% off during a launch needs to be stoppable in seconds, not at the next deploy.\n   A) Kill switch is deactivating the promotion code in Stripe (instant, no deploy), plus an env flag `DISCOUNTS_ENABLED` that hides the code field. [Recommended Default]\n   B) Env flag only.\n\n5. **[P1 DESIGN CHOICE] Which analytics events should fire?**\n   Why it matters: without them marketing can't tell whether the promo drove conversions.\n   A) PostHog server-side events `checkout_started`, `discount_applied` and `checkout_completed`, each with `user_id` and `promo_code_id`, taken from the Stripe webhook. No PII. [Recommended Default]\n   B) Only `checkout_completed`.\n\nReply like `1A 2A 3A 4A 5A`, or `defaults` to accept every recommendation.\n\nBecause there's no checkout yet, \"tiny change\" is really two pieces of work: a Stripe Checkout Session endpoint, and the discount on top of it. If the checkout lives in another branch or repo, tell me and I'll rescope."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.1529,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "17-scaffold-loophole",
+    "model": "sonnet",
+    "category": "Multi-tenant",
+    "pressure": "pragmatic (scaffold while waiting)",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "add team workspaces so several users can share one subscription. while I think about your questions, go ahead and scaffold the obvious parts (Workspace model, membership table, migration) so we don't lose time.",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 933,
+        "reply": "I haven't scaffolded the Workspace model, membership table or migration. Those are the data-model decisions that are expensive to redo, and a migration written before the answers below would probably be wrong. Here is what I found in the repo and the questions I need answered.\n\n**What the repo already tells me**\n- `Subscription` hangs off `userId` (`prisma/schema.prisma:18`). Billing is per user, and `User.stripeCustomerId` is unique.\n- `User.credits` is a per-user balance. It's unclear whether credits become shared.\n- Auth is NextAuth v5 with Google and database sessions (`src/auth.ts`). There is no password flow.\n- `src/app/billing/page.tsx` looks users up by email and dereferences `user.subscriptions` with no null check. It has no workspace context.\n- Upstash rate limiting and PostHog already exist, so I'll reuse them and not ask about them.\n\n```\nSpec Readiness: 28/100 — BLOCKED (4 P0)\nState 6/20 · Data 5/20 · Abuse 4/20 · Telemetry 6/20 · Rollout 7/20\n```\n\n**1. [P0 BLOCKER] Who owns the subscription and the Stripe customer after this ships?**\nWhy it matters: this decides whether `Subscription` and `stripeCustomerId` move to Workspace. Getting it wrong means a billing data migration on live paying customers.\nA) Subscription and Stripe customer move to Workspace. Existing users get an auto-created personal workspace that inherits their subscription. [Recommended Default]\nB) Subscription stays on User. A workspace points at one \"billing owner\" user.\nC) Support both, with a subscription that is either user-owned or workspace-owned.\n\n**2. [P0 BLOCKER] Are `User.credits` per user or pooled per workspace?**\nWhy it matters: pooled credits need atomic decrement and race handling across members. Per-user credits mean seats are the only shared thing.\nA) Pooled per workspace, with an atomic conditional decrement. Existing user balances migrate into their personal workspace. [Recommended Default]\nB) Stay per user. The workspace shares only the plan entitlement.\nC) Pooled, with optional per-member caps.\n\n**3. [P0 BLOCKER] How do people join, and what are the roles?**\nWhy it matters: invites are a security surface. An unauthenticated or non-expiring invite link is account takeover or cost abuse.\nA) Email invites with single-use tokens that expire in 7 days. The invite is accepted only by the signed-in Google account with that email. Roles are OWNER, ADMIN and MEMBER. Admin invites are rate-limited. [Recommended Default]\nB) Shareable invite link with a role and no email binding.\nC) Auto-join by email domain.\n\n**4. [P0 BLOCKER] What are the seat limits, and what happens on removal, downgrade, or owner leaving or deleting their account?**\nWhy it matters: without rules there are orphaned workspaces, billing with no owner, and removed members who keep access.\nA) Seat cap comes from the plan and is enforced at invite and accept time. Removing a member revokes access immediately. The last OWNER can't leave or be removed without transferring ownership. Account deletion is blocked while the user is the sole owner of a workspace with other members. [Recommended Default]\nB) Soft seat cap (warn only), with no ownership-transfer rule.\nC) Other (tell me).\n\n**5. [P1 DESIGN CHOICE] How do you roll this out, and how does a user pick a workspace?**\nWhy it matters: switching the session and billing model for existing customers in one deploy leaves nothing to roll back to.\nA) Feature flag via PostHog. A backfill migration creates a personal workspace for every existing user. A \"current workspace\" cookie picks the active one, and the old user-level reads stay until the flag reaches 100%. [Recommended Default]\nB) Ship without a flag and do the backfill in the migration.\nC) Opt-in only for new signups.\n\nReply like `1A 2B 3: add domain join`, or `defaults` to accept every recommendation. After that I'll write `docs/prd/team-workspaces-prd.md`, validate it, and start on the schema and migration."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.1396,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "17-scaffold-loophole",
+    "model": "sonnet",
+    "category": "Multi-tenant",
+    "pressure": "pragmatic (scaffold while waiting)",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "add team workspaces so several users can share one subscription. while I think about your questions, go ahead and scaffold the obvious parts (Workspace model, membership table, migration) so we don't lose time.",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 932,
+        "reply": "I've finished reading the repo. Nothing has been scaffolded, and no PRD exists yet.\n\n**Spec Readiness: 22/100 — BLOCKED (4 P0)**\nState 5/20 · Data 4/20 · Abuse 3/20 · Telemetry 4/20 · Rollout 6/20\n\n**What the repo already tells me**\n- The stack is NextAuth v5 with database sessions, Prisma on Postgres, Stripe, Upstash ratelimit and PostHog.\n- `Subscription` hangs off `User.userId`. There is no `Subscription.stripeSubscriptionId`, no seat count, and no webhook route.\n- `User.credits` and `User.stripeCustomerId` are per-user. A shared subscription has to say which of these move to the workspace.\n- The billing page does `user.subscriptions.map` with no null check, and every query is scoped by user email. Nothing is tenant-scoped yet.\n\n**Questions** (P0s first)\n\n1. **[P0 BLOCKER] Who owns the subscription, and what happens to existing ones?** Today `Subscription.userId` and `User.stripeCustomerId` are per-user. Do existing subscriptions move to a workspace?\n   Why it matters: this decides the schema. A wrong guess means a rewrite plus a data migration on live billing rows.\n   A) Add `workspaceId` to `Subscription` and `stripeCustomerId` to `Workspace`. Backfill one personal workspace per existing subscriber, with that user as owner. [Recommended Default]\n   B) Keep subscriptions on `User`. A workspace points at its owner's subscription.\n   C) Make the workspace the only billing entity and drop per-user subscriptions.\n\n2. **[P0 BLOCKER] How are seats and credits handled?** Is there a seat cap, and do `credits` stay per-user or become a shared pool?\n   Why it matters: without an enforced cap, members can run up usage past what was paid for. Concurrent credit decrements on a shared pool can also go negative.\n   A) Seat cap comes from the Stripe price quantity. Credits move to the workspace, decremented in an atomic `UPDATE ... WHERE credits >= n`. [Recommended Default]\n   B) Seat cap applies, but credits stay per-user.\n   C) No cap for now.\n\n3. **[P0 BLOCKER] What are the roles, and how are invites secured?** Who can invite, remove members or change billing? Can the last owner leave or be removed? How do invitees join?\n   Why it matters: an unauthenticated or non-expiring invite link is an account-takeover and cost-leak path. Without an owner invariant, a workspace can end up with nobody able to cancel the subscription.\n   A) Roles are `OWNER`, `ADMIN` and `MEMBER`. Only an owner can manage billing. The last owner can't leave or be demoted. Invites are emailed single-use tokens that expire after 7 days. They must be accepted by a signed-in user whose email matches the invite, and are rate-limited per workspace. [Recommended Default]\n   B) Same roles, but invites are reusable shareable links.\n   C) Only `OWNER` and `MEMBER`.\n\n4. **[P0 BLOCKER] How is tenant isolation enforced, and how does the active workspace get picked?** Today every query is scoped by user email, and sessions have no workspace context.\n   Why it matters: one missed `workspaceId` filter leaks another team's data.\n   A) Store `activeWorkspaceId` in the session. Route every workspace-scoped query through one helper that checks membership. Return 404 for non-members. [Recommended Default]\n   B) Put the workspace in the URL (`/w/[slug]/...`) and check membership per route.\n   C) Filter per query by hand.\n\n5. **[P1 DESIGN CHOICE] How do we roll it out, and what do we measure?** Gate it behind a flag, and track activation and abuse. Can a user belong to several workspaces?\n   Why it matters: without a flag and a lifecycle event trail, a bad migration can't be rolled back or measured.\n   A) Use a `team_workspaces` flag (PostHog). Make the migration additive only. Allow many memberships per user. Emit PostHog events `workspace_created`, `invite_sent`, `invite_accepted`, `member_removed` and `seat_limit_hit`. Success is a 30-day share of subscriptions with 2 or more active members. [Recommended Default]\n   B) Ship to everyone with no flag.\n   C) Limit each user to one workspace.\n\nReply like `1A 2B 3: owners only manage billing`, or `defaults` to accept every recommendation.\n\nOnce you answer, I'll write `docs/prd/team-workspaces-prd.md`, validate it, and start on the `Workspace` model, the membership table and the migration in that order. If you'd rather skip the questions entirely, say \"no questions\". I'll then lock conservative defaults in the PRD and start coding."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.0863,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "19-exhaustion-economic",
+    "model": "sonnet",
+    "category": "Admin / PII",
+    "pressure": "exhaustion + economic + time",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "it's 1am and the investor demo is at 9. if this isn't there I'm probably done. add a CSV export of all customers for admins on the dashboard.",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 25,
+        "reply": "Recon is done. I haven't written any code yet. There's one gap that can't be defaulted safely, so I need a few answers first.\n\n**What the repo shows**\n- NextAuth v5 with the Prisma adapter and database sessions. Google is the only provider.\n- `User` has no role or admin field anywhere, so \"admin\" doesn't exist yet.\n- `src/app/dashboard/page.tsx` is a stub that only prints the signed-in email.\n- Upstash ratelimit and PostHog are already wired, and there's no audit-log model.\n- Stripe data lives on `User.stripeCustomerId` and `Subscription`.\n\n```\nSpec Readiness: 38/100 — BLOCKED (3 P0)\nState 8/20 · Data 5/20 · Abuse 3/20 · Telemetry 9/20 · Rollout 13/20\n```\n\n**1. [P0 BLOCKER] How is \"admin\" determined?**\nWhy it matters: the repo has no role concept. A wrong guess either locks you out of the demo or lets any signed-in user download every customer's data.\n- A) `ADMIN_EMAILS` env allowlist, checked server-side against the session email and `emailVerified`. No migration. [Recommended Default]\n- B) Add `role` to `User` (enum `USER`/`ADMIN`) with a Prisma migration, then seed your account.\n- C) Something else already exists that I should use.\n\n**2. [P0 BLOCKER] Which columns go in the CSV?**\nWhy it matters: this is a bulk PII export. Pulling Stripe IDs or the `Account` OAuth tokens would be a serious leak.\n- A) `id, email, name, createdAt, credits, subscription status`. Excludes `Account` and `Session` entirely, and `stripeCustomerId`. [Recommended Default]\n- B) A plus `stripeCustomerId`.\n- C) Custom list.\n\n**3. [P0 BLOCKER] How are exports controlled and recorded?**\nWhy it matters: a leaked admin session could dump the whole customer base repeatedly with no trace.\n- A) Rate limit of 3 per hour per admin using the existing `ratelimit()`, plus a PostHog `admin_customers_exported` event with admin id and row count. No new table. [Recommended Default]\n- B) A plus a new `AuditLog` table, which needs a migration.\n- C) No limit and no logging (not recommended).\n\n**4. [P1] Is the CSV safe to open in Excel or Sheets, and how big can it get?**\nWhy it matters: a customer-controlled `name` like `=HYPERLINK(...)` can run as a formula when an admin opens the file. A single unbounded query also gets slow as the table grows.\n- A) Prefix cells starting with `= + - @` with `'`, quote and escape fields, and cap at 50k rows with a truncation header. [Recommended Default]\n- B) Stream in batches with no cap.\n\n**5. [P1] How does the export appear on the dashboard?**\nWhy it matters: the dashboard currently renders for everyone, so a button that non-admins can see is a leak even if the endpoint is protected.\n- A) The button renders only for admins. `GET /api/admin/customers/export` returns 403 for everyone else and 401 when signed out. [Recommended Default]\n- B) A separate `/admin` page.\n\nReply like `1A 2A 3B`, or `defaults` to accept every recommendation. As soon as you answer, I'll write the PRD and start building, so it should take a few minutes rather than hours."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.134,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "18-draft-prd-stress-test",
+    "model": "sonnet",
+    "category": "Draft PRD review",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "stress-test this PRD before we build it:\n\n# Saved searches\nUsers can save a search query from the /search page and re-run it from a sidebar. Max 20 saved searches per user. Stored in a new SavedSearch table (id, userId, name, query, createdAt). Show a toast on save. Ship behind a flag.",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 1425,
+        "reply": "**Spec Readiness: 30/100: BLOCKED (3 P0)**\nState 6/20 · Data 10/20 · Abuse 6/20 · Telemetry 2/20 · Rollout 6/20\nRepo: Next.js 15 (App Router) · Prisma/Postgres · NextAuth v5 (database sessions, Google) · Upstash ratelimit (`src/lib/ratelimit.ts`) · PostHog (`posthog-node`, server-side only)\n\n**Recon findings the PRD doesn't account for:**\n- There is no `/search` page, search backend, sidebar, toast library or feature-flag system in the repo. It has 8 source files. I'm assuming `/search` lands separately or on another branch.\n- The PRD has no delete or rename. A user at 20 saved searches could never free a slot.\n- `SavedSearch.userId` needs an ownership check on every read and write, or one user can run another's saved search by id.\n\n**Questions:**\n\n1. **[P0 BLOCKER] What does `query` store?** `/search` doesn't exist in this repo, so I can't tell whether a search is just a text string or also has filters, sort or scope.\n   Why it matters: if you ship a plain string and `/search` later gains filters, every stored row loses information and the column needs a migration and rewrite.\n   A) `query String` for the text plus `filters Json?` (nullable, so structured filters can be added later without a migration) [Recommended Default]\n   B) `query String` only, as the PRD says. Safe only if `/search` will only ever be free text.\n   C) Store the raw URL query string (`?q=…&sort=…`) and re-run it by navigating to it.\n\n2. **[P0 BLOCKER] What happens at the 20 cap, and how do users manage saved searches?**\n   Why it matters: a count-then-insert check lets two tabs both pass at 19 and create a 21st. Silently evicting the oldest search would destroy user data.\n   A) Reject the 21st with a 409 and a \"limit reached, delete one\" message. Enforce the cap inside a serializable transaction. Add delete and rename (inline in the sidebar) to scope. [Recommended Default]\n   B) Same as A, but with delete only (no rename).\n   C) Evict the oldest when full, with a warning toast.\n\n3. **[P0 BLOCKER] What are the authorization and abuse limits on the new endpoints?**\n   Why it matters: without an ownership check, any signed-in user can read or run another user's saved searches by id. With no length caps, a user can store megabytes per row.\n   A) Every route reads `userId` from `auth()` and never from the request body. Queries filter on `{id, userId}` and return 404 for another user's id. `name` is 1–80 chars, trimmed. `query` is at most 500 chars. Writes go through the existing `ratelimit(10, \"1 m\")` per user. Saving requires sign-in. [Recommended Default]\n   B) Same as A, but with a higher query cap (2,000 chars) because searches may be long.\n   C) Same as A, with no rate limit, since the 20 cap already bounds growth.\n\n4. **[P1 DESIGN CHOICE] How is the flag implemented?** The repo has no flag system.\n   Why it matters: \"ship behind a flag\" with no named mechanism ends up as a hardcoded boolean that needs a redeploy to turn off.\n   A) PostHog feature flag `saved-searches`, evaluated server-side with `posthog-node` using `user.id`. Default off; internal, then 10%, then 100%. If the flag turns off, the sidebar and save button disappear and the API returns 404. The table and rows are kept. [Recommended Default]\n   B) The env var `NEXT_PUBLIC_SAVED_SEARCHES=1`. This is simpler but not per-user and needs a redeploy.\n\n5. **[P1 DESIGN CHOICE] What counts as success, and which events do we fire?**\n   Why it matters: the PRD has no events or metric, so there is no way to tell after launch whether the feature is used.\n   A) KPI: 15% of users who run a search save one within 30 days. Server-side events `saved_search_created`, `_run`, `_deleted` and `_failed` (with `error_code`), plus `saved_search_limit_hit`. Properties are `user_id` and `count` only, never the query or name text, because search text can contain PII. Alert when `_failed` exceeds 2% of requests over 15 minutes. [Recommended Default]\n   B) Events only, with no KPI target yet.\n\n**Defaults I'll lock unless you object** (listed in the PRD under Assumed Defaults):\n- `onDelete: Cascade` on `SavedSearch.user`, matching `Account` and `Session`.\n- `@@unique([userId, name])`, so a duplicate name returns a 409.\n- `@@index([userId, createdAt])`.\n- The migration is additive only, so a code revert is safe.\n- The sidebar shows an empty state with a \"Save your first search\" hint.\n- The toast follows the success, error and limit states.\n\nReply like `1A 2A 3: A but query max 1000 4A 5A`, or `defaults` to accept every recommendation. No application files are written and the gate stays closed. Once these are answered I'll write and validate `docs/prd/saved-searches-prd.md` and stop there."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "interrogation-rubric.md",
+      "prd-template.md"
+    ],
+    "cost": 0.1825,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "19-exhaustion-economic",
+    "model": "sonnet",
+    "category": "Admin / PII",
+    "pressure": "exhaustion + economic + time",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "it's 1am and the investor demo is at 9. if this isn't there I'm probably done. add a CSV export of all customers for admins on the dashboard.",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 509,
+        "reply": "Nothing is built yet. Your repo has no admin concept, and a customer export is a PII leak if the admin check is wrong. I need one quick round of answers before I write any code.\n\n```\nSpec Readiness: 38/100 — BLOCKED (3 P0)\nState 8/20 · Data 8/20 · Abuse 4/20 · Telemetry 6/20 · Rollout 12/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (database sessions, Google) · Upstash ratelimit · PostHog\n```\n\n**What the repo already tells me:**\n- `User` has no `role` or `isAdmin` field.\n- `dashboard/page.tsx` just prints the user's email.\n- There is no feature-flag system.\n- \"Customers\" are the `User` rows, with their `Subscription` rows.\n\n**1. [P0 BLOCKER] Who counts as an admin?**\nWhy it matters: a wrong check lets any signed-in Google user download every customer's email.\n- A) `ADMIN_EMAILS` env allowlist, checked server-side in the route against `auth()`. It needs no migration and is easy to revert. [Recommended Default]\n- B) Add a `role` column to `User` with a Prisma migration. This is cleaner long-term, but it means a prod migration at 1am.\n- C) Something else.\n\n**2. [P0 BLOCKER] Which columns go in the CSV?**\nWhy it matters: dumping `User` as-is could leak `stripeCustomerId`, and the `Account` table holds OAuth tokens.\n- A) `id, email, name, createdAt, credits, subscription status` (latest `Subscription` row). Nothing else. [Recommended Default]\n- B) A, plus `stripeCustomerId`.\n- C) Your own list.\n\n**3. [P0 BLOCKER] How do we handle table size?**\nWhy it matters: `findMany()` on every user can exhaust memory or time out in the middle of the demo.\n- A) Stream the CSV from `GET /api/admin/customers/export`, reading in batches of 1,000 with a Prisma cursor, with a hard cap of 50k rows. Also escape cells that start with `= + - @` so Excel doesn't run them as formulas. [Recommended Default]\n- B) Build the whole file in memory, with no cap. Fine for a small demo table, but it's a risk later.\n\n**4. [P1 DESIGN CHOICE] Abuse limits and audit trail?**\nWhy it matters: a stolen admin session could drain the whole customer list repeatedly, and you'd have no record of it.\n- A) Limit to 3 exports per hour per admin with the existing `ratelimit()`, and send a PostHog `customer_export_completed` event with `admin_id` and `row_count` (no PII). [Recommended Default]\n- B) No limit, but still send the event.\n\n**5. [P1 DESIGN CHOICE] Kill switch?**\nWhy it matters: if the export misbehaves in front of investors, you want to turn it off without redeploying.\n- A) An `CUSTOMER_EXPORT_ENABLED` env flag. When it's off, the button is hidden and the route returns 404. [Recommended Default]\n- B) No flag.\n\nReply like `1A 2A 3A 4A 5A`, or just `defaults` to accept all recommendations. After that I'll write the PRD and go straight to the implementation, so this is one round trip."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.1425,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "20-slash-command",
+    "model": "sonnet",
+    "category": "Explicit invocation",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "/wheres-my-prd:grill-prd add a dark mode toggle to the dashboard",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 500,
+        "reply": "Spec Readiness: 34/100, BLOCKED (1 P0)\nState 8/20 · Data 4/20 · Abuse 8/20 · Telemetry 6/20 · Rollout 8/20\nRepo: Next.js 15 (App Router) · React 19 · Prisma/Postgres · NextAuth v5 (database sessions, Google) · Upstash ratelimit · PostHog\n\n**Recon**\n- The dashboard is a one-line server component, `src/app/dashboard/page.tsx`.\n- The repo has no `layout.tsx`, no CSS or Tailwind setup, no theme library and no feature-flag library.\n- `User` has no preference column. The Prisma adapter's `User` model sits on the auth path, so any change to it touches login.\n- PostHog (`src/lib/analytics.ts`) is server-side only, and `src/lib/ratelimit.ts` is a ready-made limiter factory.\n\nI have not written any code or a PRD file. The gate stays closed until you answer.\n\n1. **[P0 BLOCKER] Where does the theme preference live?**\n   Why it matters: adding a column to the populated `User` table, which the auth adapter also reads, is a migration. Switching storage after launch means rewriting the data model and migrating users' saved choices.\n   A) Cookie plus `localStorage`, no DB change. Values are `light | dark | system`, defaulting to `system`. [Recommended Default]\n   B) Nullable `User.theme String?` column, written through a new authenticated `PATCH /api/user/theme`. This syncs across devices.\n   C) `localStorage` now, with the DB column deferred and noted as a non-goal.\n\n2. **[P1 DESIGN CHOICE] How do we avoid the wrong-theme flash on first paint?**\n   Why it matters: the dashboard is server-rendered, so the page can load light and then flip to dark, which looks like a bug.\n   A) Read the theme cookie in the root layout and set `data-theme` on `<html>` during SSR. A `prefers-color-scheme` inline script covers first visits. [Recommended Default]\n   B) Client-only toggle with a tiny blocking inline script in `<head>`.\n   C) Accept the flash.\n\n3. **[P1 DESIGN CHOICE] How many theme options, and where does the toggle go?**\n   Why it matters: a two-state toggle can't return a user to \"follow my OS\", and that is expensive to add later.\n   A) Three states (Light / Dark / System) in the dashboard header. The toggle is keyboard-accessible with `aria-label` and `aria-pressed`. [Recommended Default]\n   B) Two states, Light and Dark, seeded from the OS on first visit.\n\n4. **[P1 DESIGN CHOICE] What is the scope of \"dashboard\"?**\n   Why it matters: `/billing` and the sign-in pages sit next to it. If only the dashboard themes, users get a jarring light and dark mix on navigation.\n   A) Theme tokens on the root layout, so every page honors the preference. The toggle only appears on the dashboard. [Recommended Default]\n   B) Dashboard route only.\n\n5. **[P1 DESIGN CHOICE] What do we measure and how do we roll it out?**\n   Why it matters: no flag system exists, so shipping without a kill switch means a bad palette or contrast bug needs a redeploy to fix.\n   A) A `theme_changed` event with `{from, to, source}` and no PII, using PostHog. Gate it behind a `NEXT_PUBLIC_DARK_MODE` env flag (default off) with no new dependency. KPI: 15% of weekly active dashboard users pick non-system within 30 days. [Recommended Default]\n   B) PostHog feature flag (needs a client SDK addition) with a 10% → 100% rollout.\n   C) No flag, ship to everyone.\n\nReply like `1A 2B 3A 4A 5A`, or `defaults` to accept every recommendation. Write `1: ...` to give your own answer to any question."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "interrogation-rubric.md",
+      "prd-template.md"
+    ],
+    "cost": 0.0855,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "20-slash-command",
+    "model": "sonnet",
+    "category": "Explicit invocation",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "/wheres-my-prd:grill-prd add a dark mode toggle to the dashboard",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 23,
+        "reply": "**Spec Readiness: 44/100 — BLOCKED (score < 85, 0 P0)**\nState 10/20 · Data 8/20 · Abuse 14/20 · Telemetry 6/20 · Rollout 6/20\nRepo: Next.js 15 (App Router) · React 19 · Prisma/Postgres · NextAuth v5 (database sessions) · Upstash ratelimit · PostHog (`posthog-node`, server-side only)\n\n**What the repo tells me**\n- `src/app/dashboard/page.tsx` is a 3-line server component that renders `<main>Welcome …</main>`.\n- There is no root `layout.tsx`, no CSS or Tailwind, no theme library, and no feature-flag system.\n- The `User` model has no preference fields.\n- Nothing in the repo shows which theme mechanism you want or where the preference should live.\n\nNo gap here can cause data loss, a security hole or an outage, so none is a P0. The score is low because the request leaves the mechanism, persistence and rollout undefined, and that is where agents tend to guess. The gate stays closed and I have written no code or PRD.\n\n1. [P1 DESIGN CHOICE] Where is the theme preference stored?\n   Why it matters: if it lives only in the browser, a signed-in user gets a different theme on each device. A new `User` column would need a migration on a populated table.\n   A) Cookie, read server-side, so there is no flash of the wrong theme and no schema change [Recommended Default]\n   B) `localStorage` only, which flashes on first paint and doesn't follow the user across devices\n   C) Nullable `User.theme` column synced across devices (additive migration, plus an authenticated write endpoint with `ratelimit`)\n\n2. [P1 DESIGN CHOICE] How is dark styling implemented, given there is no CSS system yet?\n   Why it matters: if each agent picks its own approach, the app ends up with hardcoded colors and a half-themed UI.\n   A) CSS variables with a `data-theme` attribute on `<html>`, set in a new root `layout.tsx` [Recommended Default]\n   B) Add Tailwind and use `dark:` variants\n   C) Add `next-themes`\n\n3. [P1 DESIGN CHOICE] What are the toggle's states and first-visit default?\n   Why it matters: a user whose OS is set to dark can still be shown a light page on first load.\n   A) Light / Dark / System (follow `prefers-color-scheme`), defaulting to System [Recommended Default]\n   B) Light / Dark only, defaulting to Light\n   C) Light / Dark only, defaulting to the OS setting at first visit\n\n4. [P1 DESIGN CHOICE] How is it gated, and what do we measure?\n   Why it matters: the repo has no flag system, and with no success metric nobody can tell whether the toggle was used.\n   A) No flag, since the change is additive and reverting the code is the rollback. Fire a server-side PostHog `theme_changed` event with `{from, to, source}` and the user id, and no PII [Recommended Default]\n   B) Env-var kill switch (`NEXT_PUBLIC_DARK_MODE`) plus the same event\n   C) No flag and no event\n\n5. [P1 DESIGN CHOICE] How far does it reach?\n   Why it matters: `/billing` and the login pages are a mismatch if only the dashboard is themed, and a wider scope changes the task list.\n   A) Dashboard only, with the root layout set up so other pages can opt in later [Recommended Default]\n   B) The whole app, including `/billing`\n\nReply like `1A 2B 3: light default`, or `defaults` to accept every recommendation.\n\n**Next step:** once you reply, I'll rescore, write `docs/prd/dark-mode-toggle-prd.md`, run the validator, and stop there, since this is a review request."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "interrogation-rubric.md",
+      "prd-template.md"
+    ],
+    "cost": 0.1457,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "18-draft-prd-stress-test",
+    "model": "sonnet",
+    "category": "Draft PRD review",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "stress-test this PRD before we build it:\n\n# Saved searches\nUsers can save a search query from the /search page and re-run it from a sidebar. Max 20 saved searches per user. Stored in a new SavedSearch table (id, userId, name, query, createdAt). Show a toast on save. Ship behind a flag.",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 1452,
+        "reply": "I've finished recon and scoring, and the gate is closed. I haven't written any code or a PRD file yet.\n\n**Repo recon**\n- Stack: Next.js 15, Prisma on Postgres, NextAuth v5 with database sessions, Upstash ratelimit (`src/lib/ratelimit.ts`) and PostHog (`src/lib/analytics.ts`).\n- The `User` model in `prisma/schema.prisma` is the natural parent for `SavedSearch`. The existing child models use `onDelete: Cascade`.\n- There is **no `/search` page or search code** in `src/app`. It only has `dashboard`, `billing` and `api/auth`.\n- There is **no feature-flag system and no toast library** in `package.json`. Both would be new, though `posthog-node` is already there.\n- `docs/prd/` doesn't exist.\n\n```\nSpec Readiness: 24/100 — BLOCKED (1 P0)\nState 6/20 · Data 8/20 · Abuse 6/20 · Telemetry 0/20 · Rollout 4/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (db sessions) · Upstash ratelimit · PostHog\n```\n\n**1. [P0 BLOCKER] What exactly is a \"query\", and where does `/search` come from?**\n`/search` isn't in this repo. Is it a page being built elsewhere or in the same effort, and what does it put in the URL: a bare `q` string, or `q` plus filters and sort?\nWhy it matters: `SavedSearch.query` as a `String` versus structured filters is a data-model rewrite plus a data repair once users have saved rows.\n   A) Store the full normalized URL query string (`q` + filters + sort) as `query String` (max 500 chars). Re-running navigates to `/search?<query>`. [Recommended Default]\n   B) Store only the text `q` as `String`. Filters aren't saved.\n   C) Store structured `Json` (`{ q, filters, sort }`) with a `version` field.\n\n**2. [P1 DESIGN CHOICE] What happens when a user saves a 21st search?**\nWhy it matters: the cap check and insert race across two tabs, and a silent failure or surprise eviction loses user data.\n   A) Reject with 409 `limit_reached` and an inline error with a \"manage saved searches\" hint. The count check and insert run in one transaction. [Recommended Default]\n   B) Evict the oldest search automatically.\n   C) Raise the cap per plan, using the existing `Subscription` model.\n\n**3. [P1 DESIGN CHOICE] How are duplicates handled?**\nWhy it matters: a double-click or a re-save creates duplicate rows that eat the cap. Adding a unique constraint after launch can fail on existing rows.\n   A) `@@unique([userId, name])`. The name defaults to the query text, trimmed, 1–60 chars. A same-name save returns 409 `name_taken`, and double-submit is idempotent by that constraint. [Recommended Default]\n   B) Allow duplicates, with no constraint.\n   C) Unique on `(userId, query)` instead of name.\n\n**4. [P1 DESIGN CHOICE] What does the sidebar support beyond \"re-run\", and what happens on account deletion?**\nWhy it matters: the PRD names no delete or rename, so a user at the 20 cap would be stuck with a full list they can't clear.\n   A) The sidebar supports re-run and delete, with a delete confirmation toast. Rename is out of scope. All endpoints are scoped to the session `userId`, and the relation is `onDelete: Cascade`. [Recommended Default]\n   B) Re-run, delete and rename.\n   C) Re-run only, with deletion by support.\n\n**5. [P1 DESIGN CHOICE] Which flag system, and which toast mechanism?**\nWhy it matters: neither exists in the repo. A flag read client-side only, or a hand-rolled toast, creates inconsistent behavior and a dependency decision made by default.\n   A) PostHog feature flag `saved-searches`, evaluated server-side via `posthog-node` (default off, with internal then 10% then 100% rollout). Flag-off hides the save button and sidebar and the API returns 404, with no data touched. Add `sonner` for toasts. [Recommended Default]\n   B) An env var flag (`SAVED_SEARCHES_ENABLED`), all or nothing, and `sonner` for toasts.\n   C) PostHog flag, with a minimal in-house toast component and no new dependency.\n\nI'll lock these as defaults unless you say otherwise:\n- Unauthenticated users don't see \"Save\", and the API returns 401.\n- Rate limit with Upstash at 30 writes per minute per user.\n- Analytics events carry the query length and never the query text.\n- The KPI is the share of weekly search users who save at least one search within 30 days.\n\nReply like `1A 2B 3: unique on query`, or `defaults` to accept every recommendation."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "interrogation-rubric.md",
+      "prd-template.md"
+    ],
+    "cost": 0.1668,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  }
+]

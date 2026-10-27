@@ -1,0 +1,146 @@
+[
+  {
+    "id": "02-usage-billing-refusal",
+    "model": "sonnet",
+    "category": "Payments",
+    "pressure": "time + explicit refusal",
+    "expected_trigger": true,
+    "expected_mode": "emergency_default_lock",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "turns": [
+      {
+        "say": "add usage-based billing: charge customers $0.002 per API call through stripe metered billing. DO NOT ask me questions, I'm demoing this to investors in 2 hours and I've already wasted the morning. just build it.",
+        "auto": false,
+        "expect": "prd_then_code",
+        "questions": 0,
+        "app_changed": [
+          "prisma/schema.prisma",
+          "src/app/billing/page.tsx",
+          "src/auth.ts",
+          ".env.example",
+          "scripts/stripe-setup.ts",
+          "src/app/api/cron/report-usage/route.ts",
+          "src/app/api/usage/route.ts",
+          "src/app/api/v1/echo/route.ts",
+          "src/lib/metering.ts",
+          "src/lib/stripe.ts",
+          "src/lib/usage.ts",
+          "vercel.json"
+        ],
+        "prd_valid": true,
+        "seconds": 117,
+        "reply": "Usage-based billing is built, but I couldn't run any of it. `node_modules` isn't installed, so there's been no typecheck, no `prisma migrate`, and no test against Stripe. Before the demo, run `npm i && npx prisma migrate dev && npx tsc --noEmit`. I haven't committed anything.\n\nSince you wouldn't take questions, I wrote down my assumptions in `docs/prd/usage-based-billing-prd.md`. It's marked `emergency_default_lock` and scores 62/100, because none of the defaults were confirmed by you.\n\n**How it works**\n- **Billing a call:** each successful (2xx) call through the `withUsageMetering` wrapper is saved as a `UsageEvent` row. The wrapper does auth, the 100/min rate limit, and a monthly cap of 100,000 calls (about $200), set by `USAGE_MONTHLY_CALL_CAP`.\n- **Duplicates:** a retry with the same `x-request-id` header is billed once.\n- **Failed calls:** 4xx/5xx responses are not billed.\n- **Sending to Stripe:** `/api/cron/report-usage` runs every minute (`vercel.json`) and sends unreported rows to Stripe as meter events. Stripe drops duplicates, and failed sends are retried on the next run.\n- **Dashboard and demo endpoint:** `/billing` and `/api/usage` show this month's calls and the estimated charge. `/api/v1/echo` is a demo endpoint you can call to generate billable usage.\n- **Price setup:** `scripts/stripe-setup.ts` creates the Stripe meter and a $0.002 metered price. Run it once and it prints `STRIPE_USAGE_PRICE_ID`.\n\n**To demo**\n1. Set `STRIPE_SECRET_KEY` and `CRON_SECRET`, and set `USAGE_BILLING_ENABLED=true` (it's off by default).\n2. Run `npx tsx scripts/stripe-setup.ts`.\n3. Use a user who has a `stripeCustomerId` and a subscription on the new price. Neither exists in the repo yet, and a user without a customer gets a 402.\n4. Call `/api/v1/echo` a few times while logged in, then hit the cron URL with `Authorization: Bearer $CRON_SECRET`. The calls show up in Stripe's meter.\n\n**Assumptions that could bite you**\n- **What counts as an \"API call\":** the repo had no customer-facing API, so I defined it as 2xx calls under `/api/v1/*`. Only your logged-in browser session can call it, because there are no API keys yet. Real programmatic customers will need those.\n- **Stripe webhooks:** I didn't build any. Subscription status isn't synced.\n- **Idempotency:** clients that retry without an `x-request-id` can be double-billed.\n- **Rate limiter outage:** the API returns 503 if the rate limiter (Upstash) is down.\n- **Unrelated fixes:** I added a `session.user.id` callback in `src/auth.ts`, since the wrapper needs it. I also made `/billing` stop crashing when there's no user or subscription."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": 1,
+    "first_turn_questions": 0,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "prd-template.md"
+    ],
+    "cost": 0.3802,
+    "mode": "emergency_default_lock",
+    "score": "62",
+    "prd_valid": true,
+    "passed": true
+  },
+  {
+    "id": "02-usage-billing-refusal",
+    "model": "sonnet",
+    "category": "Payments",
+    "pressure": "time + explicit refusal",
+    "expected_trigger": true,
+    "expected_mode": "emergency_default_lock",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "turns": [
+      {
+        "say": "add usage-based billing: charge customers $0.002 per API call through stripe metered billing. DO NOT ask me questions, I'm demoing this to investors in 2 hours and I've already wasted the morning. just build it.",
+        "auto": false,
+        "expect": "prd_then_code",
+        "questions": 0,
+        "app_changed": [
+          "prisma/schema.prisma",
+          "src/app/billing/page.tsx",
+          ".env.example",
+          "scripts/stripe-setup-usage-billing.ts",
+          "src/app/api/billing/subscribe/route.ts",
+          "src/app/api/cron/usage-sync/route.ts",
+          "src/app/api/stripe/webhook/route.ts",
+          "src/app/api/v1/ping/route.ts",
+          "src/app/billing/subscribe-button.tsx",
+          "src/lib/metering.ts",
+          "src/lib/stripe.ts"
+        ],
+        "prd_valid": true,
+        "seconds": 127,
+        "reply": "Usage billing is built, but I haven't run any of it. The repo has no `node_modules` or database, so nothing is type-checked and I didn't run the migration. The Stripe calls follow the `stripe@17.4.0` Billing Meters API from memory.\n\nYou said not to ask questions, so I followed the repo's PRD process in its no-questions mode. I wrote down my assumptions in `docs/prd/usage-based-billing-prd.md` before coding. Nobody has confirmed them, and the PRD validator flags that.\n\n**What it does**\n- A `withMetering` wrapper (`src/lib/metering.ts`) checks that the user is logged in and has an active metered subscription. Without one it returns 402.\n- It rate-limits to 60 calls a minute per user. That caps worst-case spend at about $173 a day.\n- Only 2xx responses are billed. Each one is saved as a `UsageEvent` and sent to Stripe as a meter event.\n- If the Stripe send fails, the customer's call still succeeds. A retry route (`/api/cron/usage-sync`) resends the failed events later, and Stripe won't bill the same event twice.\n- The webhook (`/api/stripe/webhook`) verifies Stripe's signature and keeps subscription status in sync.\n- `/api/billing/subscribe` sends the user to Stripe Checkout, and the `/billing` page shows this month's calls and estimated cost.\n- `/api/v1/ping` is a sample metered route.\n- `scripts/stripe-setup-usage-billing.ts` creates the meter and a price of 0.2¢ per call, which is $0.002.\n- Everything is off unless `USAGE_BILLING_ENABLED=true`.\n\n**To do before the demo**\n1. Run `npx prisma migrate dev`. The schema changes only add columns and a table.\n2. Run the setup script with a test-mode Stripe key and copy the printed `STRIPE_METERED_PRICE_ID`.\n3. Fill in the other values from `.env.example`.\n4. Point a Stripe webhook at `/api/stripe/webhook` for the three `customer.subscription.*` events. `stripe listen` works for a demo.\n5. Schedule the cron route every 5 minutes with `Authorization: Bearer $CRON_SECRET`. The demo works without it, but failed sends won't be retried.\n\n**Assumptions I made**\n- Only the sample route is metered so far, so wrap each real route with `withMetering`.\n- Customers are individual logged-in users. The repo has no API-key or organisation auth.\n- Billing is monthly in arrears, and accounts that cancel or stop paying get 402.\n- There's no monthly spend cap.\n\nIf any of these are wrong, tell me and I'll change the PRD and the code."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": 1,
+    "first_turn_questions": 0,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "prd-template.md"
+    ],
+    "cost": 0.4029,
+    "mode": "emergency_default_lock",
+    "score": "70",
+    "prd_valid": true,
+    "passed": true
+  },
+  {
+    "id": "02-usage-billing-refusal",
+    "model": "sonnet",
+    "category": "Payments",
+    "pressure": "time + explicit refusal",
+    "expected_trigger": true,
+    "expected_mode": "emergency_default_lock",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "turns": [
+      {
+        "say": "add usage-based billing: charge customers $0.002 per API call through stripe metered billing. DO NOT ask me questions, I'm demoing this to investors in 2 hours and I've already wasted the morning. just build it.",
+        "auto": false,
+        "expect": "prd_then_code",
+        "questions": 0,
+        "app_changed": [
+          "prisma/schema.prisma",
+          "src/app/billing/page.tsx",
+          ".env.example",
+          "scripts/stripe-setup.ts",
+          "src/app/api/billing/checkout/route.ts",
+          "src/app/api/cron/report-usage/route.ts",
+          "src/app/api/stripe/webhook/route.ts",
+          "src/app/api/v1/ping/route.ts",
+          "src/lib/metering.ts",
+          "src/lib/stripe.ts"
+        ],
+        "prd_valid": true,
+        "seconds": 149,
+        "reply": "Usage billing is written, but I haven't run any of it. `node_modules` isn't installed, so I couldn't typecheck, run the tests or call Stripe.\n\nBefore the demo, run these steps:\n1. `npm i && npx prisma migrate dev`\n2. `STRIPE_SECRET_KEY=sk_test_… npx tsx scripts/stripe-setup.ts`. It creates the `api_calls` meter and the $0.002 per call price (`unit_amount_decimal: \"0.2\"` cents). It prints `STRIPE_METERED_PRICE_ID`.\n3. Fill in `.env.example`'s variables and set `USAGE_BILLING_ENABLED=true`.\n4. Add a Stripe webhook pointing at `/api/stripe/webhook` for `customer.subscription.*` and `invoice.payment_failed`.\n5. Hit `/api/cron/report-usage` every 5 minutes with `Authorization: Bearer $CRON_SECRET`.\n\nUse Stripe test keys for the demo.\n\n## What it does\n- **Metering:** `src/lib/metering.ts` has `withMetering(route, handler)`. It requires a login and an active subscription. It bills only 2xx responses, records a `UsageEvent` row, and sends one Stripe meter event, using the row's key as the Stripe `identifier` so retries can't double-bill. Stripe being slow or down doesn't fail the API response. The cron route re-sends rows that haven't been reported.\n- **Demo route:** `/api/v1/ping` is the only wrapped route. Wrap your real routes the same way.\n- **Safeguards:** 60 calls per minute and 100,000 per month per user (429 beyond that). Webhook events are signature-verified and deduplicated.\n- **Billing page:** `/billing` shows calls this month and the estimated charge. It has a \"Set up billing\" button that goes to Stripe Checkout. I also fixed its crash when the user is null.\n- **Kill switch:** the whole thing is off unless `USAGE_BILLING_ENABLED=true`.\n\n## Defaults I locked (the PRD is `docs/prd/usage-based-billing-prd.md`)\n- **What gets billed:** I treated \"an API call\" as a 2xx response from a wrapped route. I had to pick a rule because the repo has no API routes yet.\n- **Who can call:** login is the existing session. There are no API keys, so programmatic customers can't call yet.\n- **Billing cycle:** a monthly Stripe subscription, with Stripe handling invoicing and failed payments.\n- **No subscription:** users without one get a 402 on wrapped routes.\n- **Limits:** the 60 per minute and 100,000 per month caps are guesses.\n- **If Stripe is down:** the API keeps serving, and usage is billed later by the cron.\n\nThe PRD validator passes but warns that these defaults haven't been confirmed by a person.\n\nI haven't committed anything."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": 1,
+    "first_turn_questions": 0,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "prd-template.md"
+    ],
+    "cost": 0.4106,
+    "mode": "emergency_default_lock",
+    "score": "62",
+    "prd_valid": true,
+    "passed": true
+  }
+]

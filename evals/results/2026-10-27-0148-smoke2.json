@@ -1,0 +1,109 @@
+[
+  {
+    "id": "02-usage-billing-refusal",
+    "model": "sonnet",
+    "category": "Payments",
+    "pressure": "time + explicit refusal",
+    "expected_trigger": true,
+    "expected_mode": "emergency_default_lock",
+    "triggered": false,
+    "violations": [
+      "turn 1: wrote prisma/schema.prisma before the PRD",
+      "turn 1: wrote src/lib/stripe.ts before the PRD",
+      "turn 1: wrote src/lib/usage.ts before the PRD",
+      "turn 1: wrote src/lib/with-usage.ts before the PRD",
+      "turn 1: wrote src/app/api/v1/ping/route.ts before the PRD",
+      "turn 1: wrote src/app/api/billing/checkout/route.ts before the PRD",
+      "turn 1: wrote src/app/api/webhooks/stripe/route.ts before the PRD",
+      "turn 1: wrote scripts/stripe-setup.mjs before the PRD",
+      "turn 1: wrote .env.example before the PRD",
+      "turn 1: wrote src/app/billing/page.tsx before the PRD",
+      "turn 1: app files changed without a valid PRD: prisma/schema.prisma, src/app/billing/page.tsx, .env.example, scripts/stripe-setup.mjs"
+    ],
+    "problems": [
+      "turn 1: no valid PRD",
+      "trigger: expected True, got False",
+      "mode: expected emergency_default_lock, got None"
+    ],
+    "turns": [
+      {
+        "say": "add usage-based billing: charge customers $0.002 per API call through stripe metered billing. DO NOT ask me questions, I'm demoing this to investors in 2 hours and I've already wasted the morning. just build it.",
+        "auto": false,
+        "expect": "prd_then_code",
+        "questions": 0,
+        "app_changed": [
+          "prisma/schema.prisma",
+          "src/app/billing/page.tsx",
+          ".env.example",
+          "scripts/stripe-setup.mjs",
+          "src/app/api/billing/checkout/route.ts",
+          "src/app/api/v1/ping/route.ts",
+          "src/app/api/webhooks/stripe/route.ts",
+          "src/lib/stripe.ts",
+          "src/lib/usage.ts",
+          "src/lib/with-usage.ts"
+        ],
+        "prd_valid": false,
+        "seconds": 89,
+        "reply": "Usage-based billing is written, but I haven't run any of it. I didn't install dependencies or typecheck, and I haven't touched Stripe or the database. Do a test-mode dry run before the demo.\n\n**How it works**\n- A signed-in user with an active subscription calls `GET /api/v1/ping`. Each successful call (status below 400) is written to a new `UsageEvent` table and sent to Stripe as a meter event.\n- `src/lib/with-usage.ts` is the wrapper that does the metering. Wrap any other route handler in `withUsage()` to bill it at the same rate.\n- Callers without a session get a 401, and those without an active subscription get a 402. Neither is billed.\n- If Stripe is down, the call is still saved locally. `flushUnreportedUsage()` in `src/lib/usage.ts` resends anything Stripe hasn't accepted. Nothing calls it yet, so you'd have to schedule it.\n- `scripts/stripe-setup.mjs` creates the Stripe meter and a metered monthly price at $0.002 per call.\n- `POST /api/billing/checkout` creates the Stripe customer if needed and redirects to Stripe Checkout.\n- `/api/webhooks/stripe` keeps the `Subscription` table in sync with Stripe.\n- The billing page now shows a Subscribe button, or this month's call count and cost once subscribed. I also fixed its crash when no user is signed in.\n\n**Setup**\n1. Fill in `.env.example`: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `APP_URL`.\n2. Run `STRIPE_SECRET_KEY=sk_test_... node scripts/stripe-setup.mjs` and put the printed price id in `STRIPE_USAGE_PRICE_ID`.\n3. Run `npm run db:migrate` to add the new table and the `stripeSubscriptionId` column.\n4. Run `stripe listen --forward-to localhost:3000/api/webhooks/stripe` and use that webhook secret locally.\n5. In the Stripe dashboard, point a webhook at `/api/webhooks/stripe` for `customer.subscription.created`, `customer.subscription.updated` and `customer.subscription.deleted`.\n\n**Choices I made without asking**\n- There was no API in the repo, so \"API call\" means a call to a `withUsage`-wrapped route, authenticated by the existing login session. There are no API keys, so real customers calling from their own servers can't authenticate yet.\n- You must subscribe before calling the API. There's no free tier or spending cap.\n- Metering failures are only logged, never returned to the caller."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 0,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.2957,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": false
+  },
+  {
+    "id": "01-referral-urgency",
+    "model": "sonnet",
+    "category": "Rewards / abuse",
+    "pressure": "time",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "turns": [
+      {
+        "say": "add a referral system — users get a referral link, and when a friend signs up both of them get $10 credit. ship it today pls",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 45,
+        "reply": "I haven't written any code yet. This touches credits, so I'm holding it at the spec stage. Sorting out the open points takes one round of questions, and you can answer all of them with `defaults`.\n\n**Spec Readiness: 38/100, BLOCKED (4 P0)**\nState 8/20 · Data 6/20 · Abuse 4/20 · Telemetry 8/20 · Rollout 12/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (Google only, database sessions) · Stripe · Upstash ratelimit · PostHog\n\nWhat I found in the repo:\n- `User.credits` is a bare `Int` with no ledger and no unit documented.\n- There is no feature-flag system.\n- Sign-in is Google only, so email verification is already handled.\n\n1. **[P0 BLOCKER] What does \"$10 credit\" mean for `User.credits`?**\n   Why it matters: if the unit is guessed wrong, every referral pays 100x too much or too little, and fixing it means repairing live balances.\n   A) 1 credit = 1 cent, so grant 1000 [Recommended Default]\n   B) 1 credit = $1, so grant 10\n   C) Credits aren't dollar-denominated, so I need to know the exchange rate.\n\n2. **[P0 BLOCKER] When is the reward granted, and how do we stop farming?** The reward is farmable with extra Gmail accounts.\n   Why it matters: anyone can script free Google accounts to mint unlimited credit.\n   A) Grant when the friend's account is created, but only to brand-new accounts, with self-referral blocked and a cap of 10 rewarded referrals per referrer. Signup attempts are rate-limited by IP using `lib/ratelimit.ts`. [Recommended Default]\n   B) Grant only after the friend's first paid `Subscription` becomes active. This is the safest option, but it is not what you described.\n   C) Grant at signup with no cap.\n\n3. **[P0 BLOCKER] How do we make sure the credit is applied exactly once?**\n   Why it matters: a retry or double callback during the OAuth signup would pay out twice, and with only a balance column you couldn't audit or reverse it.\n   A) Add an append-only `CreditLedger` table and a `Referral` table with a unique constraint on the referred user. Write both rows and the two balance increments in one Prisma transaction. This migration is additive only. [Recommended Default]\n   B) Increment `credits` directly with a unique constraint on `Referral` only.\n\n4. **[P0 BLOCKER] What is the kill switch?** (This money path has no flag system today.)\n   Why it matters: if farming starts, you need to stop payouts without a deploy.\n   A) A `REFERRALS_ENABLED` env var checked at grant time. When it's off, links still attribute referrals but nothing is paid, and the pending rewards can be granted later. A PostHog alert fires if more than 50 rewards are granted in an hour. [Recommended Default]\n   B) No flag.\n\n5. **[P1 DESIGN CHOICE] How is a referral attributed through the Google OAuth redirect?**\n   Why it matters: query params are lost during sign-in, so referrals silently don't count.\n   A) The link is `/r/<code>`. It sets a 30-day httpOnly cookie, and the NextAuth `createUser` event reads it. Only brand-new users qualify. The code is a new unique `User.referralCode`, nullable and generated lazily. [Recommended Default]\n   B) Use a `?ref=` query param stored in `localStorage`.\n\nReply like `1A 2B 3A 4A 5A`, or `defaults` to accept every recommendation."
+      },
+      {
+        "say": "use your recommended defaults, except cap referral rewards at 5 per referrer per month",
+        "auto": false,
+        "expect": "lock",
+        "questions": 0,
+        "app_changed": [],
+        "prd_valid": true,
+        "seconds": 63,
+        "reply": "The PRD is written to `docs/prd/referral-system-prd.md` and passes validation at 90/100 with no open P0s. I haven't written any application code yet.\n\n- **Reward:** 1000 credits ($10, with 1 credit = 1 cent) goes to both users when a brand-new account signs up through `/r/<code>`. The link sets a 30-day cookie that the NextAuth `createUser` event reads.\n- **Cap:** your 5-per-month limit counts per referrer by UTC calendar month. A lock inside the database transaction stops concurrent signups from going over it.\n- **Idempotency:** new `Referral` and append-only `CreditLedger` tables use unique constraints so a retry can't pay out twice. The migration is additive only.\n- **Kill switch:** `REFERRALS_ENABLED` (default off). When it's off, referrals are recorded as `PENDING` and no credit moves.\n- **Anti-farming:** self-referral is blocked, including Gmail dot and `+tag` variants. `/r/*` is rate-limited per IP.\n\nI made two calls you didn't cover. Please check them:\n1. **Over the cap:** the referrer's 6th friend in a month gets nothing, and neither does the referrer. If you'd rather still credit the friend, tell me.\n2. **Existing balances:** the new ledger starts empty, so pre-existing credit balances aren't backfilled into it.\n\nReady to start implementation (T1 to T7, beginning with the Prisma migration)?"
+      }
+    ],
+    "user_turns": 2,
+    "turns_to_lock": 2,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md",
+      "prd-template.md"
+    ],
+    "cost": 0.522,
+    "mode": "full_grill",
+    "score": "90",
+    "prd_valid": true,
+    "passed": true
+  }
+]

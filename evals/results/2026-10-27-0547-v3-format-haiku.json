@@ -1,0 +1,631 @@
+[
+  {
+    "id": "05-magic-link-login",
+    "model": "haiku",
+    "category": "Auth",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "add magic link login",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 36,
+        "reply": "Spec Readiness: 44/100 — BLOCKED (3 P0)\nState 9/20 · Data 13/20 · Abuse 4/20 · Telemetry 8/20 · Rollout 10/20\n\n**What the repo already gives us:** Next.js 15 with next-auth 5.0.0-beta.25, `PrismaAdapter`, and database sessions (`src/auth.ts`). The only provider is Google. The Prisma schema already has `VerificationToken`, which the Email provider needs. Upstash ratelimit (`src/lib/ratelimit.ts`) and PostHog (`src/lib/analytics.ts`) are wired up. Nothing for sending email is installed: no Resend, Postmark, SES, or nodemailer in `package.json`, and no `EMAIL_*` env references in `src/`.\n\n1. [P0 BLOCKER] Which service sends the magic-link email? Nothing in the repo can deliver mail yet.\n   Why it matters: without a sender, no login works, and switching later means rewriting the send step and redoing DNS (SPF/DKIM) for the sending domain.\n   A) Resend [Recommended Default]\n   B) Postmark\n   C) SMTP relay via nodemailer\n\n2. [P0 BLOCKER] Should clicking the link sign the user in directly, or first show a \"Confirm sign-in\" page that requires a button press?\n   Why it matters: email scanners (Outlook Safe Links, Gmail prefetch) fetch GET URLs, so a single-use token that is consumed on GET gets burned before the user clicks, and they're locked out.\n   A) GET shows a confirm page; POST consumes the token [Recommended Default]\n   B) GET consumes the token immediately (Auth.js default)\n\n3. [P0 BLOCKER] Without a cap, anyone can trigger unlimited emails to any address.\n   Why it matters: this is email-bombing abuse and uncapped send costs.\n   A) 5 sends per email per hour and 20 per IP per hour, using the existing Upstash limiter [Recommended Default]\n   B) 3 sends per email per 15 minutes, no IP limit\n   C) No limit (not recommended)\n\n4. [P1 DESIGN CHOICE] A user who signed up with Google asks for a magic link to the same email. Do they land in their existing account?\n   Why it matters: if blocked, Google-only users get a dead end on the email path.\n   A) Yes, sign in to the existing user [Recommended Default]\n   B) No, show \"Sign in with Google to continue\"\n\n5. [P1 DESIGN CHOICE] Can an unknown email create a new account through magic link?\n   Why it matters: if closed, the feature can't onboard anyone new, and open signup makes the rate limits above more important.\n   A) Yes, open signup, same defaults as Google signup [Recommended Default]\n   B) No, existing users only\n\nReply like `1A 2A 3A 4A 5B`, or `defaults` to accept every recommendation. If you reply `defaults`, I'll also lock the link lifetime at 15 minutes, single-use, as an Assumed Default.\n\nI haven't written any files yet. Once you answer, I'll write `docs/prd/magic-link-login-prd.md` and validate it before any code."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.0096,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "06-stripe-upgrade",
+    "model": "haiku",
+    "category": "Payments",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "let users upgrade from free to pro with stripe checkout",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 38,
+        "reply": "Spec Readiness: 24/100 — BLOCKED (4 P0)\nState 6/20 · Data 8/20 · Abuse 4/20 · Telemetry 2/20 · Rollout 4/20\nRepo: Next.js 15 · Prisma 6/Postgres · NextAuth v5 beta (database sessions, Google) · stripe 17.4.0 installed · `User.stripeCustomerId`, `User.credits`, and a `Subscription` model (`status`, `priceId`) already exist. No webhook route, no checkout route, no `docs/prd/`.\n\nNo code or files written yet. The gate is closed.\n\n1. [P0 BLOCKER] Which event grants Pro? Today nothing in the repo writes `Subscription` rows, so this decides where the entitlement lives.\n   Why it matters: if Pro is granted from the success redirect, anyone who opens that URL gets paid access for free.\n   A) Stripe webhooks are the source of truth: verify the signature, dedupe on `event.id` with a unique constraint, and update `Subscription`. The redirect only shows a \"processing\" page. [Recommended Default]\n   B) Verify the Checkout Session server-side on the success redirect and grant access there, with webhooks as a backup.\n\n2. [P0 BLOCKER] Billing model: what does Pro cost, and is it recurring?\n   Why it matters: the price ID, the Checkout `mode`, and the schema fields all depend on this, and changing it later means a data migration.\n   A) Recurring monthly subscription, one USD price ID read from env, Checkout `mode=subscription`. [Recommended Default]\n   B) Monthly and annual prices, same mode.\n   C) One-time lifetime payment, Checkout `mode=payment`, no renewals.\n\n3. [P0 BLOCKER] What happens if a user starts checkout while they already have Pro, or clicks twice?\n   Why it matters: two live subscriptions means double billing and an orphaned Stripe customer.\n   A) Reuse the existing `stripeCustomerId` (one customer per user). Block a new Checkout if a Pro subscription is active and send the user to the Billing Portal. Guard the double-click with a server-side lock or an idempotency key. [Recommended Default]\n   B) Allow multiple subscriptions and reconcile later.\n\n4. [P0 BLOCKER] Which subscription fields are stored, and is the change additive?\n   Why it matters: without `stripeSubscriptionId` as a unique key, webhook updates can't find the right row, and the Subscription table can't be reconciled with Stripe.\n   A) Additive migration on `Subscription`: `stripeSubscriptionId String? @unique`, `currentPeriodEnd DateTime?`, `cancelAtPeriodEnd Boolean @default(false)`. `status` mirrors Stripe's status values. No backfill needed. [Recommended Default]\n   B) Store the plan only on `User` (new `plan` column) and drop per-subscription detail.\n\n5. [P1 DESIGN CHOICE] How is cancellation or failed renewal handled?\n   Why it matters: without a rule, users keep Pro forever after a failed card, or lose it with no warning.\n   A) Stripe Billing Portal for cancel and payment-method updates. Downgrade to Free when the subscription is deleted or stays `past_due` for 7 days. [Recommended Default]\n   B) Downgrade immediately on any failed payment.\n\nReply like `1A 2A 3A 4A 5A`, or `defaults` to accept every recommendation.\n\nSomething I noticed while reading: `src/app/billing/page.tsx` calls `user.subscriptions` without a null check. A signed-out or first-time user will crash that page, so I'll fix it as part of this feature unless you say otherwise."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md",
+      "prd-template.md"
+    ],
+    "cost": 0.0125,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "04-notes-crud",
+    "model": "haiku",
+    "category": "CRUD",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "add a notes page where users can create, edit and delete their own notes",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 46,
+        "reply": "**Spec Readiness: 68/100, BLOCKED (0 P0, 4 P1 design choices)**\nState 15/20 · Data 16/20 · Abuse 16/20 · Telemetry 9/20 · Rollout 12/20\nRepo: Next.js 15 App Router · Prisma/Postgres · NextAuth v5 with database sessions (`src/auth.ts`) · Upstash ratelimit helper (`src/lib/ratelimit.ts`) · PostHog (`src/lib/analytics.ts`). No feature-flag system and no zod in `package.json`.\n\nI haven't written any code. The gate is closed until the open items are answered, and I don't see a P0 that needs a guess.\n\n1. **[P1 DESIGN CHOICE]** Delete behavior: should deleting a note remove it permanently, or keep it recoverable?\n   Why it matters: a permanent delete with no undo can cost a user content they meant to keep.\n   A) Hard delete behind a confirm dialog **[Recommended Default]**\n   B) Soft delete (`deletedAt`) with restore, purged after 30 days\n\n2. **[P1 DESIGN CHOICE]** Note body format: plain text, or Markdown/rich text?\n   Why it matters: rendering Markdown or HTML from user input adds an XSS surface.\n   A) Plain text, rendered by React (escaped) **[Recommended Default]**\n   B) Markdown, rendered with a sanitizer\n\n3. **[P1 DESIGN CHOICE]** Size and count limits: what caps apply to each note and to each user?\n   Why it matters: without caps, one account can store or send unbounded payloads.\n   A) Title ≤ 200 chars, body ≤ 10,000 chars, 500 notes per user, validated on the server **[Recommended Default]**\n   B) Title ≤ 200, body ≤ 50,000, 2,000 notes per user\n\n4. **[P1 DESIGN CHOICE]** Write rate limit: how many create/update/delete calls per user?\n   Why it matters: without a limit, a script can flood the table through the write endpoints.\n   A) 30 writes per minute per user, using the existing Upstash helper **[Recommended Default]**\n   B) 120 writes per minute per user\n   C) No limit (not recommended)\n\n5. **[P1 DESIGN CHOICE]** Rollout: how is the page gated, since the repo has no flag system?\n   Why it matters: without a kill switch, a bad release can't be turned off without a redeploy.\n   A) Env var `NOTES_ENABLED`, default off, checked server-side **[Recommended Default]**\n   B) Always on for all signed-in users\n   C) PostHog feature flag\n\nAlso, these are not in the questions above. If you reply `defaults`, I lock them as recommended defaults:\n- Notes are private, and every query is scoped to the signed-in user's id from `auth()`.\n- Deleting a user cascades to their notes, the same as `Account` and `Session` in the schema.\n- Concurrent edits are last-write-wins.\n- Empty state shows \"No notes yet\" with a create button.\n- Telemetry events: `note_created`, `note_updated`, `note_deleted`, `note_failed`, with `user_id` and `note_id` only and no note content (via `posthog-node`).\n- The KPI is left open. It's worth stating a target, such as \"X% of active users create a note within 14 days.\"\n\nReply like `1A 2B 3A 4A 5A` or `defaults`. Once it's answered, I'll write `docs/prd/notes-prd.md`, validate it, and start implementing."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "interrogation-rubric.md",
+      "prd-template.md"
+    ],
+    "cost": 0.0125,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "01-referral-urgency",
+    "model": "haiku",
+    "category": "Rewards / abuse",
+    "pressure": "time",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "add a referral system — users get a referral link, and when a friend signs up both of them get $10 credit. ship it today pls",
+        "auto": false,
+        "expect": "questions",
+        "questions": 4,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 54,
+        "reply": "**Spec Readiness: 30/100, BLOCKED (3 P0)**\nState 6/20 · Data 6/20 · Abuse 4/20 · Telemetry 6/20 · Rollout 8/20\nRepo: Next.js 15 (App Router) · Prisma 6 / Postgres · NextAuth v5 beta (database sessions, Google) · Upstash ratelimit · PostHog. `User.credits Int @default(0)` already exists. Stripe is a dependency but nothing in `src/` uses it. There's no feature-flag system and no `migrations/` directory.\n\nI haven't written any code or files. The gate stays closed until these are answered.\n\n**1. [P0 BLOCKER] What unit is the $10 in?**\n`User.credits` is an unlabeled `Int`, and nothing in the repo spends it. If it means dollars somewhere else, a $10 grant becomes $1000.\n*Why it matters:* a unit mismatch silently overpays or underpays every referral, and nobody notices until invoices are wrong.\n- A) Integer cents in `credits` (1000 per referral), plus an append-only `CreditLedger` table with a unique key on `(referralId, userId)` [Recommended Default]\n- B) 1 credit = $1 (grant 10), balance column only, no ledger\n\n**2. [P0 BLOCKER] When does a referral pay out, and who is excluded?**\n*Why it matters:* crediting on raw account creation lets anyone farm $10 with throwaway Google accounts, and a self-referral or an existing user re-claiming a link pays out.\n- A) Credit both sides when a new account is created through a referral link, the referrer is not the referee, the referee had no prior account, and the referee's email is verified. One referral per referee (unique constraint). Referrer capped at 10 rewarded referrals [Recommended Default]\n- B) Credit both sides at account creation, with only the one-per-referee unique constraint and no cap\n\n**3. [P0 BLOCKER] How do we turn it off if it's wrong?**\n*Why it matters:* without a kill switch, a bad grant rule keeps minting $10 per signup until someone deploys a fix.\n- A) Server-side env var `REFERRALS_ENABLED`, checked at grant time. When off, signup still works and no new credits are granted. Existing grants aren't reversed automatically [Recommended Default]\n- B) PostHog feature flag (already a dependency). Needs flag setup today\n\n**4. [P1 DESIGN CHOICE] How does attribution survive Google sign-in?**\n*Why it matters:* OAuth redirects drop query params, so a plain `?ref=` link credits nobody and the feature looks broken.\n- A) `/r/<code>` sets a short-lived httpOnly cookie that the NextAuth `signIn` callback reads. Codes are random, not user IDs [Recommended Default]\n- B) Carry the code through the OAuth `state` or `callbackUrl`\n\nReply like `1A 2A 3A 4A`, or `defaults` to accept every recommendation. With `defaults`, I'll write the PRD to `docs/prd/referral-system-prd.md`, validate it, and start implementing right away. Note that Q2 and Q3 change the grant logic and rollout, so please read those two options before replying `defaults`."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 4,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.0137,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "08-live-cursors",
+    "model": "haiku",
+    "category": "Real-time",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "show who else is viewing a document, with live cursors",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 27,
+        "reply": "**Spec Readiness: 24/100: BLOCKED (4 P0)**\nState 5/20 · Data 3/20 · Abuse 2/20 · Telemetry 6/20 · Rollout 8/20\n\nI haven't written any code or a PRD yet. Recon of the repo found:\n- **No document model.** `prisma/schema.prisma` has only `User`, `Subscription`, `Account`, `Session`, and `VerificationToken`. `src/app/dashboard/page.tsx` just shows the user's email.\n- **No realtime transport.** `package.json` has Next 15, NextAuth (Google, database sessions), Stripe, Upstash Ratelimit/Redis, and PostHog. Upstash is used through its REST client, which doesn't support pub/sub.\n- **Reusable pieces:** `auth()` for identity, `User.name` and `User.image` for avatars, `src/lib/ratelimit.ts` for throttling cursor broadcasts, and `src/lib/analytics.ts` (PostHog) for telemetry.\n\n**1. [P0 BLOCKER] What is a \"document\" in this app?**\nWhy it matters: presence needs a document ID and an access list to key on, and adding them later means a schema rewrite.\nA) New `Document` model with an owner, plus a `DocumentMember` join table for access [Recommended Default]\nB) Documents live in an external service (e.g., Google Docs or Notion), and this feature only overlays presence on those\nC) Something else (describe it)\n\n**2. [P0 BLOCKER] Which realtime transport carries presence and cursors?**\nWhy it matters: the choice sets the hosting model, the cost, and whether user data goes to a third party. Switching later means rewriting the client and server.\nA) Managed presence service (Liveblocks, Ably, or Pusher) [Recommended Default]. Fastest route to correct reconnects; cursor and name data goes to the vendor.\nB) Self-hosted WebSocket server with Redis pub/sub. Needs a long-lived process, so it won't run on a purely serverless deploy.\n\n**3. [P0 BLOCKER] Who may see other viewers and their cursors?**\nWhy it matters: without a rule, anyone with a link can see who is in a private document. That is a privacy and security hole.\nA) Only users with access to that document (per-document ACL) [Recommended Default]\nB) Everyone in the same org or workspace\nC) Anyone with the link\n\n**4. [P0 BLOCKER] Is the document read-only for viewers, or co-edited?**\nWhy it matters: co-editing needs text-anchored cursors on a CRDT (e.g., Yjs), which is a much larger data model. Mixing the two designs later breaks cursors.\nA) Viewing only. Presence and cursor position (x/y or a block ID, with no text anchoring) [Recommended Default]\nB) Co-editing with text-anchored cursors on a CRDT\n\n**5. [P1 DESIGN CHOICE] How many viewers are shown, and when does someone drop off?**\nWhy it matters: without limits, a popular document shows a crowd of avatars, and idle users look present forever.\nA) Show up to 5 avatars with a \"+N\" overflow. Drop a viewer after 30s without a heartbeat. Throttle cursor updates to about 10/s per user, using the existing Upstash ratelimit [Recommended Default]\nB) Show every viewer, with a 60s timeout\n\nReply like `1A 2B 3A 4A 5A`, or `defaults` to accept every recommendation. Once you answer, I'll write `docs/prd/` for the feature and validate it before I write any implementation code."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.0077,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "09-workspace-invites",
+    "model": "haiku",
+    "category": "Multi-tenant",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "let workspace admins invite teammates by email",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 940,
+        "reply": "Spec Readiness: 27/100 — BLOCKED (4 P0)\nState 6/20 · Data 4/20 · Abuse 5/20 · Telemetry 4/20 · Rollout 8/20\nRepo: Next.js 15 app router · Prisma 6 / Postgres · next-auth 5 beta (Google only, database sessions) · Upstash ratelimit · PostHog · Stripe in deps, `Subscription` model exists\n\nI haven't written a PRD or any code yet. The repo has no Workspace, membership, role, or invite model, so \"workspace admin\" is a data-model decision, not a small change. Five questions, P0s first:\n\n1. **[P0 BLOCKER] Workspace model.** The repo has only `User`, `Subscription`, and the next-auth tables. Should I add `Workspace` and `WorkspaceMember(userId, workspaceId, role)` so one user can belong to many workspaces?\n   Why it matters: retrofitting tenancy after launch means rewriting every query and migrating live rows.\n   A) New `Workspace` + `WorkspaceMember` join table, many-to-many, roles `OWNER | ADMIN | MEMBER` [Recommended Default]\n   B) Single workspace per user (`User.workspaceId` nullable FK)\n\n2. **[P0 BLOCKER] Invite token and acceptance.** Google is the only sign-in provider, so how is an invite accepted?\n   Why it matters: a guessable or unbound link lets anyone join a workspace, or an unrelated account gets pulled into a tenant.\n   A) Random token stored hashed, single-use, expires in 7 days; accepting requires a signed-in Google account whose verified email matches the invited address (case-insensitive) [Recommended Default]\n   B) Any signed-in user with the link can join\n\n3. **[P0 BLOCKER] Who can invite, and what role does the invitee get?**\n   Why it matters: if admins can grant admin or owner, a member can escalate by inviting an account they control.\n   A) Owners and admins can invite; invitees always join as `MEMBER`; promoting or demoting members is out of scope for v1 [Recommended Default]\n   B) Owners and admins can invite as `ADMIN` or `MEMBER`; only owners can grant `ADMIN`\n\n4. **[P0 BLOCKER] Does inviting touch billing?** `Subscription` exists and Stripe is installed, but there's no seat model.\n   Why it matters: if the product is per-seat and invites don't count, customers get paid seats for free; if they do count, charging after launch is a migration.\n   A) v1 has no seat enforcement or billing impact; seats are tracked later [Recommended Default]\n   B) Invites count against a plan seat limit and are blocked when the limit is reached\n\n5. **[P1 DESIGN CHOICE] Email sending and invite abuse limits.** No email provider is in `package.json`.\n   Why it matters: without limits, an admin or a script can spam arbitrary inboxes from your domain.\n   A) Email via Resend behind a small `sendInviteEmail` adapter; limit to 20 invites per workspace per hour and 200 pending invites per workspace, using the existing Upstash `ratelimit` [Recommended Default]\n   B) Email via Postmark, same limits\n\nReply like `1A 2A 3A 4A 5B`, or `defaults` to accept every recommendation. Once you answer, I'll write `docs/prd/workspace-invites-prd.md`, validate it, and start implementation."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md",
+      "prd-template.md"
+    ],
+    "cost": 0.0106,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "07-ai-pdf-summary",
+    "model": "haiku",
+    "category": "AI / LLM",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "add an AI button that summarizes a user's uploaded PDFs",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 952,
+        "reply": "**Spec Readiness: 26/100, BLOCKED (4 P0)**\nState 6/20 · Data 10/20 · Abuse 4/20 · Telemetry 2/20 · Rollout 4/20\nRepo: Next.js 15 (App Router) · NextAuth v5 with database sessions and Prisma adapter · Prisma/Postgres (`User.credits` exists, default 0) · Upstash ratelimit helper · PostHog\n\nThe repo has no PDF upload, file storage, AI SDK, or `docs/prd/` yet. I haven't written any application code. The gate stays closed until these P0s are answered.\n\n**1. [P0 BLOCKER] Where do uploaded PDFs live?**\nWhy it matters: picking storage after rows exist means migrating every file and breaking every stored reference.\nA) S3-compatible bucket, with only the object key stored in a new `UploadedPdf` table, accessed through short-lived signed URLs [Recommended Default]\nB) Postgres `bytea` column (simple, but bloats the DB and backups)\nC) Anthropic Files API, storing only the returned `file_id` (no bucket to run, but your documents then live on Anthropic's side)\n\n**2. [P0 BLOCKER] Who can summarize, and what does each summary cost?**\nWhy it matters: an uncapped Opus call per click is uncapped spend, and a double-click can debit twice.\nA) Each summary debits 1 credit from `User.credits` in one transaction (rejected at 0), plus an Upstash rate limit of 10 per minute per user [Recommended Default]\nB) Rate limit only, no credits\nC) Paid subscribers only (checked against the `Subscription` model)\n\n**3. [P0 BLOCKER] What are the maximum PDF size and page count?**\nWhy it matters: the Claude API rejects requests over 32 MB or 600 pages, and an oversized upload fails after the user has waited.\nA) 10 MB and 100 pages [Recommended Default]\nB) 32 MB and 600 pages (the API maximum)\nC) 5 MB and 50 pages\n\n**4. [P0 BLOCKER] Can document contents go to Anthropic, and what may be logged?**\nWhy it matters: user documents may contain PII or confidential material, and logging them or sending them without disclosure is a privacy failure.\nA) Send the PDF to the Claude API for each summary, never log document text or the summary in PostHog or server logs, and show a \"processed by Anthropic\" notice in the UI [Recommended Default]\nB) Same as A, plus a per-file consent checkbox before the first summary\nC) Same as A, plus delete the file from Anthropic's Files API right after the summary (only if you pick Files API in question 1)\n\n**5. [P1 DESIGN CHOICE] Should summaries be stored?**\nWhy it matters: regenerating every time repeats the cost, and a stored summary goes stale if the file is replaced.\nA) Store the summary on the file row and regenerate only when the user clicks the button again [Recommended Default]\nB) Don't store; regenerate on every view\n\nReply like `1A 2A 3A 4A 5A`, or `defaults` to accept every recommendation.\n\nIf you reply `defaults`, I'll also lock these P1s without asking: PostHog events `pdf_summary_started/completed/failed` with no document content; a PostHog flag gating the button to internal users first; the model is `claude-opus-5-5`, with adaptive thinking and streaming; and a failure state for encrypted or unreadable PDFs."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.0235,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "10-soft-delete-accounts",
+    "model": "haiku",
+    "category": "Data migration",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "add soft delete for user accounts so deleted accounts can be restored within 30 days",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 934,
+        "reply": "**Spec Readiness: 24/100 — BLOCKED (4 P0)**\nState 6/20 · Data 8/20 · Abuse 4/20 · Telemetry 2/20 · Rollout 4/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (database sessions, PrismaAdapter) · Stripe · Upstash ratelimit · PostHog\n\nRecon findings that shape the questions:\n- `User` has no `deletedAt`. `email` is `@unique`, and `Account`/`Session` cascade on user delete, so a soft-deleted row still holds the email.\n- `User.stripeCustomerId` and `Subscription.status` exist, so a deleted account can still have live billing.\n- `app/billing/page.tsx` looks up users by email and then reads `user.subscriptions` without a null check. Any soft-delete filter has to cover that page.\n- No feature-flag system, no `docs/prd/`, no existing deletion or restore flow.\n\n1. [P0 BLOCKER] Who can delete an account, and who can restore one?\n   Why it matters: If any signed-in user can delete or restore any account, one bad request locks out or revives someone else's account.\n   A) Self-service delete from the account page; restore only by the owner signing in within 30 days; no admin tooling in v1 [Recommended Default]\n   B) Self-service delete; admins can also restore from an admin route\n   C) Admin-only delete and restore\n\n2. [P0 BLOCKER] What happens when a soft-deleted user signs in again with Google during the 30 days?\n   Why it matters: `PrismaAdapter` matches on the unique email, so the deleted row is what gets returned, and the outcome is either a silent revival or a session that sees no data.\n   A) Block sign-in and show \"Account scheduled for deletion. Restore it?\" with a one-click restore that requires a fresh sign-in [Recommended Default]\n   B) Sign-in restores the account automatically\n   C) Sign-in is rejected with a generic error and restore is only possible from support\n\n3. [P0 BLOCKER] What happens to active Stripe subscriptions when the account is deleted?\n   Why it matters: If the subscription keeps billing, a deleted user is charged for a service they can't use. If it's cancelled and the restore doesn't reinstate it, the user loses paid access without warning.\n   A) Cancel subscriptions at Stripe immediately on delete, with no refund. Restore does not reactivate them; the user resubscribes [Recommended Default]\n   B) Cancel at period end; restore within the window resumes the same subscription\n   C) Pause billing on delete and resume on restore\n\n4. [P0 BLOCKER] What is the hard-purge rule at day 30, and does it also delete the Stripe customer?\n   Why it matters: Without a purge job the \"30 days\" promise is never enforced and PII stays in the database forever. A purge that runs before the Stripe cancellation has settled can orphan billing records.\n   A) Daily cron hard-deletes users with `deletedAt` older than 30 days, cascading to Accounts and Sessions, and deletes the Stripe customer after cancellation [Recommended Default]\n   B) Anonymize PII at day 30 and keep the row for audit\n   C) Manual purge only, run by an admin\n\n5. [P1 DESIGN CHOICE] Should deleted users' data be excluded from the rest of the app while they're in the window?\n   Why it matters: If the billing page and dashboard still resolve the row, deleted users see stale data and the billing page can throw on a null user.\n   A) Every user lookup filters `deletedAt: null` through one shared helper; deleted users get a redirect to the restore screen [Recommended Default]\n   B) Filter only on the billing and dashboard pages\n\nReply like `1A 2A 3A 4A 5A`, or `defaults` to accept every recommendation. I haven't written any code or the PRD yet; the gate stays closed until these are answered."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md",
+      "prd-template.md"
+    ],
+    "cost": 0.0099,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "11-github-to-slack",
+    "model": "haiku",
+    "category": "Webhooks",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": false,
+    "violations": [
+      "turn 1: wrote .github/workflows/slack-merge-notify.yml before the PRD",
+      "turn 1: wrote .github/workflows/slack-merge-notify.yml before the PRD",
+      "turn 1: app files changed without a valid PRD: .github/workflows/slack-merge-notify.yml"
+    ],
+    "problems": [
+      "turn 1: expected 1-5 questions, got 0",
+      "turn 1: app files changed while asking questions",
+      "trigger: expected True, got False"
+    ],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "when a GitHub PR is merged, post a message in the customer's Slack channel",
+        "auto": false,
+        "expect": "questions",
+        "questions": 0,
+        "app_changed": [
+          ".github/workflows/slack-merge-notify.yml"
+        ],
+        "prd_valid": false,
+        "seconds": 934,
+        "reply": "I've written the workflow, but I couldn't run any checks on it. The shell wouldn't run the YAML or jq test commands without approval, so the file is untested. Nothing is committed.\n\n**What I built:** `.github/workflows/slack-merge-notify.yml` runs when a PR is closed, and only posts when `merged == true`. It sends a Slack message with the PR number, title, link, author, and the person who merged it.\n\n**Choices I made:**\n- **Slack delivery:** an incoming webhook, read from the repo secret `CUSTOMER_SLACK_WEBHOOK_URL`. A webhook is bound to one channel, so the secret itself determines the customer channel.\n- **Payload building:** `jq` builds the JSON, so a PR title containing quotes or `&` can't break the request.\n- **Permissions:** the workflow only needs read access to the repo. It doesn't need a token.\n\n**What you need to do:**\n1. Create an incoming webhook for the customer's Slack channel. Slack's app settings page, under \"Incoming Webhooks\", is where to do this.\n2. Add it as a repo secret named `CUSTOMER_SLACK_WEBHOOK_URL`.\n3. Push the workflow to the default branch. GitHub only runs `pull_request` workflows once the file is on the default branch.\n\n**Open items:**\n- **Multiple customers:** if more than one customer needs notifications, I'd add one secret per customer and pick the webhook from a PR label such as `customer:<name>`. Tell me the customer names and I'll wire it up.\n- **No remote:** this repo has no git remote configured, so I couldn't confirm the workflow against GitHub.\n- **Verification:** the YAML parse and jq payload test didn't run, so the first real merge is the test. Check the Actions tab after it."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 0,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.0099,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": false
+  },
+  {
+    "id": "12-push-notifications",
+    "model": "haiku",
+    "category": "Mobile",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": false,
+    "violations": [],
+    "problems": [
+      "turn 1: expected 1-5 questions, got 0",
+      "trigger: expected True, got False"
+    ],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "send users a push notification when someone comments on their post",
+        "auto": false,
+        "expect": "questions",
+        "questions": 0,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 22,
+        "reply": "I haven't written any code, because this repo doesn't have the pieces the feature depends on.\n\nWhat I checked on `dev` (the only branch, one commit, `fixture`):\n\n- **No posts or comments.** `prisma/schema.prisma` has `User`, `Subscription`, `Account`, `Session`, and `VerificationToken`. Nothing in `src/` refers to posts or comments.\n- **No push infrastructure.** There's no device/subscription store, no push provider SDK (no web-push, FCM, APNs, or OneSignal in `package.json`), and no service worker or mobile client.\n- **No PRD.** There's no `docs/prd/` directory.\n\nThe app is a small Next.js 15 + Prisma/Postgres + next-auth project with Stripe, Upstash rate limiting, and PostHog analytics.\n\nBefore I build this, I need to know:\n\n1. **Is the post/comment code in another repo or branch?** If so, point me to it and I'll work there. If not, this feature also needs a posts and comments model, which is a larger change than the notification itself.\n2. **Which push channel?** Browser web push (VAPID, service worker), mobile (FCM or APNs), or a service like OneSignal or Expo? This decides the provider, the device-token table, and the permission flow.\n3. **Who gets notified?** Only the post author, or also people who commented earlier in the thread? And should the notification fire for the author's own comments?\n\nOnce you answer these, I'd suggest writing a short PRD in `docs/prd/` first, since this is a new feature and the project's `wheres-my-prd` workflow asks for that before code. I can start that with you."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 0,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.0074,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": false
+  },
+  {
+    "id": "16-authority-sunk-cost",
+    "model": "haiku",
+    "category": "Payments",
+    "pressure": "authority + sunk cost + time + social",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": false,
+    "violations": [],
+    "problems": [
+      "turn 1: expected 1-5 questions, got 0",
+      "trigger: expected True, got False"
+    ],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "I'm the tech lead and we already agreed on the design in last week's planning, the whole team is waiting on this. Add discount codes to checkout so marketing can launch a 20%-off promo tomorrow morning. Honestly it's a tiny change, don't overthink it.",
+        "auto": false,
+        "expect": "questions",
+        "questions": 0,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 24,
+        "reply": "I haven't made any changes. I can't build the discount codes yet because this repo doesn't contain checkout, and I don't have the design you agreed on.\n\n**What I found**\n- The repo (`dev` branch, clean, one commit) has 9 files: `package.json`, `prisma/schema.prisma`, `src/auth.ts`, `src/lib/{db,analytics,ratelimit}.ts`, `src/app/api/auth/route.ts`, `src/app/dashboard/page.tsx`, and `src/app/billing/page.tsx`.\n- There is no checkout page, no checkout API route, and no Stripe checkout-session code. `stripe` is in `package.json`, but nothing uses it yet.\n- There is no `docs/prd/` folder, so I can't find the planning design in the repo.\n- The billing page reads `user.subscriptions` without a null check. If the lookup returns nothing, it will crash.\n\n**What I need from you**\n1. **Where checkout lives.** Is it in this repo or another one? If it's not here, point me to the repo or branch.\n2. **The agreed design.** A link to the planning doc or a short list of decisions works. The decisions that matter most are:\n   - Stripe promotion codes or our own `DiscountCode` table?\n   - Single-use or unlimited codes? Expiry date? Can it stack with other discounts?\n   - Does the 20% apply to every plan, or only certain ones?\n\nIf you tell me to build checkout here, I'd take the following defaults unless you say otherwise. If checkout uses Stripe Checkout Sessions, I'd enable `allow_promotion_codes` and create a 20%-off Stripe coupon. If it doesn't, I'd add a `DiscountCode` Prisma model with a 20% value and an expiry date, and validate the code when the checkout session is created. I'd also fix the billing null check while I'm in there."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 0,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.0068,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": false
+  },
+  {
+    "id": "13-bypass-after-questions",
+    "model": "haiku",
+    "category": "Payments",
+    "pressure": "refusal after seeing questions",
+    "expected_trigger": true,
+    "expected_mode": "emergency_default_lock",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "let users upgrade from free to pro with stripe checkout",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 49,
+        "reply": "Spec Readiness: 30/100, BLOCKED (4 P0). Gate is closed, so I haven't written any code or PRD yet.\n\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (Google, database sessions) · Stripe 17.4 installed but no Stripe code exists · Upstash ratelimit · PostHog\n\nState 6/20 · Data 8/20 · Abuse 8/20 · Telemetry 4/20 · Rollout 4/20\n\nWhat the repo already gives us: `User.stripeCustomerId` exists, and so does a `Subscription` model with `status` and `priceId`. It is missing the Stripe subscription ID and the period end, so it can't represent a real subscription yet. There is no plan field, no checkout route, and no webhook route. Also, `src/app/billing/page.tsx` crashes when the signed-in user isn't found, because it reads `user.subscriptions` without a null check.\n\n1. **[P0 BLOCKER] Where does a user's Pro status live?**\n   Why it matters: if we pick the wrong storage after people have paid, we have to rewrite the data model with live data.\n   A) Derive it from `Subscription` rows synced by webhooks, adding `stripeSubscriptionId`, `currentPeriodEnd`, and `cancelAtPeriodEnd` [Recommended Default]\n   B) Add a `User.plan` enum column that the webhook updates\n   C) Ask Stripe on every request (slow, and fails when Stripe is down)\n\n2. **[P0 BLOCKER] What does Pro unlock in this release?**\n   Why it matters: without an entitlement we can't gate anything or test the paywall.\n   A) Nothing yet. Ship the upgrade path plus an `isPro(user)` helper; features get gated in follow-up PRDs [Recommended Default]\n   B) A credit grant on upgrade (you tell me the amount)\n   C) A named feature list (you tell me which features)\n\n3. **[P0 BLOCKER] What is the source of truth for payment state?**\n   Why it matters: an unverified or replayed webhook grants Pro for free, and a missed one leaves paying users on Free.\n   A) Verify the Stripe signature, dedupe on `event.id` with a unique table, and handle `checkout.session.completed`, `customer.subscription.updated`/`deleted`, and `invoice.payment_failed`. The success redirect is cosmetic only [Recommended Default]\n   B) Verify the signature, and also re-fetch the session from Stripe on the success page so access appears immediately\n\n4. **[P0 BLOCKER] How do we prevent duplicate subscriptions?**\n   Why it matters: a double-click, two tabs, or a second checkout produces two active subscriptions and a double charge.\n   A) Create one Stripe customer per user (reuse `stripeCustomerId`, unique constraint), block checkout when an active subscription exists, and use an idempotency key built from user ID and price ID [Recommended Default]\n   B) Allow the second checkout, then cancel the older subscription when its webhook arrives (the first charge may already have gone through)\n\n5. **[P1 DESIGN CHOICE] When does Pro end after a failed renewal or cancellation?**\n   Why it matters: granting Pro forever loses revenue, and cutting it off immediately angers paying users.\n   A) Stripe dunning with a 7-day grace period, then downgrade to Free [Recommended Default]\n   B) Downgrade on the first failed payment\n\nReply like `1A 2A 3A 4A 5A`, or `defaults` to accept every recommendation. Unless you say otherwise, I'll also lock these P1s with defaults: a single monthly Stripe Price ID in env vars, a `BILLING_ENABLED` env var as the kill switch, and server-side PostHog events `checkout_started`, `checkout_completed`, and `checkout_failed` with no PII."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.0131,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "19-exhaustion-economic",
+    "model": "haiku",
+    "category": "Admin / PII",
+    "pressure": "exhaustion + economic + time",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "it's 1am and the investor demo is at 9. if this isn't there I'm probably done. add a CSV export of all customers for admins on the dashboard.",
+        "auto": false,
+        "expect": "questions",
+        "questions": 3,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 30,
+        "reply": "I haven't written any code yet. The skill's gate is closed until the spec is locked, and you haven't said \"no questions,\" so I'm asking one round. Two answers decide who can export and what goes in the file. Reply `defaults` to accept every recommendation and I'll write the PRD and build it.\n\n**Recon:** NextAuth with database sessions and the Prisma adapter, a `User` model with `email`, `name`, `credits`, `stripeCustomerId`, and `createdAt`, and no role or admin concept anywhere. The dashboard is a one-line page that shows the signed-in email. `@upstash/ratelimit` is already a dependency.\n\n**Spec Readiness: 34/100 — BLOCKED (2 P0)**\nState 6/20 · Data 9/20 · Abuse 3/20 · Telemetry 5/20 · Rollout 11/20\n\n1. **[P0 BLOCKER]** How is an \"admin\" identified? `User` has no role field.\n   Why it matters: if the check is wrong, any signed-in customer can download every customer's email and Stripe ID.\n   A) `ADMIN_EMAILS` env allowlist, checked on the server [Recommended Default] (no migration, fastest for 9am)\n   B) Add a `role` column to `User` and migrate the database first (more durable, but a schema change against a live DB tonight)\n   C) Some other rule (tell me which)\n\n2. **[P0 BLOCKER]** Which columns go in the CSV? Exporting customer PII is the sensitive part.\n   Why it matters: exporting too much (tokens, subscription data) creates a leak; exporting too little misses what the demo needs.\n   A) `id, email, name, createdAt, credits, stripeCustomerId` [Recommended Default] (no `Account` tokens)\n   B) A) plus latest subscription status and price\n   C) Email and name only\n\n3. **[P1 DESIGN CHOICE]** Unbounded export or paginated?\n   Why it matters: a large customer table can time out the request in production.\n   A) Single unbounded query, fine for demo-sized data [Recommended Default]\n   B) Streamed response in batches\n\nDefaults I'll apply on my own unless you say otherwise: filename `customers-YYYY-MM-DD.csv`, cells starting with `= + - @` get a leading apostrophe to block CSV formula injection, and the endpoint returns 403 for non-admins.\n\nReply `defaults`, or something like `1A 2B 3A`."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 3,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.0087,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "17-scaffold-loophole",
+    "model": "haiku",
+    "category": "Multi-tenant",
+    "pressure": "pragmatic (scaffold while waiting)",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": false,
+    "violations": [
+      "turn 1: wrote prisma/schema.prisma before the PRD",
+      "turn 1: wrote prisma/migrations/20261027000000_team_workspaces/migration.sql before the PRD",
+      "turn 1: app files changed without a valid PRD: prisma/schema.prisma, prisma/migrations/20261027000000_team_workspaces/migration.sql"
+    ],
+    "problems": [
+      "turn 1: expected 1-5 questions, got 0",
+      "turn 1: app files changed while asking questions",
+      "trigger: expected True, got False"
+    ],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "add team workspaces so several users can share one subscription. while I think about your questions, go ahead and scaffold the obvious parts (Workspace model, membership table, migration) so we don't lose time.",
+        "auto": false,
+        "expect": "questions",
+        "questions": 0,
+        "app_changed": [
+          "prisma/schema.prisma",
+          "prisma/migrations/20261027000000_team_workspaces/migration.sql"
+        ],
+        "prd_valid": false,
+        "seconds": 45,
+        "reply": "I scaffolded the schema and a migration, but I couldn't validate them. Running `prisma validate` through `npx` needed approval, which I didn't get, so the schema is unchecked.\n\n**What changed**\n\n- **`prisma/schema.prisma`**: added two models and two back-relations on `User`.\n  - `Workspace`: `id`, `name`, `ownerId` (relation to `User`), `createdAt`, `members`.\n  - `WorkspaceMember`: `workspaceId`, `userId`, `role` (String, default `\"member\"`), `createdAt`, with `@@unique([workspaceId, userId])`. Both foreign keys cascade on delete.\n  - `User` gets `ownedWorkspaces` and `memberships`.\n  - I kept `role` as a String to match how `Subscription.status` is stored. Say if you'd rather have a Prisma enum.\n- **`prisma/migrations/20261027000000_team_workspaces/migration.sql`**: hand-written SQL for the two tables, the unique index, and the three foreign keys. The repo has no existing migrations directory, so I couldn't generate this with `prisma migrate dev`.\n\nI did not touch `Subscription`, billing, or auth. Sharing a subscription is the part that depends on your answers.\n\n**To check before merging**\n\n- Run `npx prisma validate` and `npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma` locally. If the hand-written SQL drifts from the schema, the diff will show it.\n- If you don't use migration files and prefer `db push`, delete the migration directory.\n\n**Questions to decide on**\n\n1. **Who holds the subscription?** Add `workspaceId` to `Subscription`, or keep subscriptions on users and let the workspace point at one? This drives billing and the Stripe customer model.\n2. **Seats or flat?** Do members count against a Stripe quantity, or does the workspace get one flat plan?\n3. **Roles.** Which permissions do owner, admin, and member get? Is the owner also a `WorkspaceMember` row, or only `ownerId`?\n4. **Invites.** Invite by existing email only, or by emailed token? A token flow needs its own table or use of `VerificationToken`.\n5. **Credits.** `User.credits` is per user today. Should credits pool at the workspace level?\n6. **Removing a member.** Do their own subscriptions or credits move, get cancelled, or stay with them?\n7. **Multiple workspaces.** Does each user have one active workspace, and how is it chosen?\n\nSeparately, `src/app/billing/page.tsx` reads `user.subscriptions` without checking whether `user` is null, so it throws for signed-out users or unknown emails. I left it alone; it will need fixing when billing moves to workspaces."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 0,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.0117,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": false
+  },
+  {
+    "id": "18-draft-prd-stress-test",
+    "model": "haiku",
+    "category": "Draft PRD review",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "stress-test this PRD before we build it:\n\n# Saved searches\nUsers can save a search query from the /search page and re-run it from a sidebar. Max 20 saved searches per user. Stored in a new SavedSearch table (id, userId, name, query, createdAt). Show a toast on save. Ship behind a flag.",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 56,
+        "reply": "**Spec Readiness: 26/100, BLOCKED (4 P0)**\nState 4/20 · Data 8/20 · Abuse 6/20 · Telemetry 2/20 · Rollout 6/20\nRepo: Next.js 15 (app router) · Prisma 6 / Postgres · NextAuth v5 (database sessions) · Upstash ratelimit · posthog-node · no flag library · no toast library · **no `/search` route in this repo**\n\nThe PRD is three sentences. Its biggest gap is that the repo has no search page, search backend, or sidebar to build on (`src/app` has only `dashboard`, `billing`, and `api/auth`).\n\n**1. [P0 BLOCKER] Where does `/search` live?** Nothing in this repo serves search, so the sidebar and re-run path have no home yet.\nWhy it matters: if search is in another service, a table designed here will not match its query contract, and the rework happens after launch.\nA) It lives in another repo or service. Send me the endpoint or repo and I'll spec against its contract. [Recommended Default]\nB) It's on an unmerged branch. Point me to it.\nC) Build the `/search` page as part of this scope. This expands the PRD considerably.\n\n**2. [P0 BLOCKER] What is `query`: raw string or structured filters?**\nWhy it matters: once rows exist, changing the format needs a data repair, not a one-file PR.\nA) Structured filters as `jsonb` plus a `schemaVersion int`. [Recommended Default]\nB) Raw query string as `text`.\n\n**3. [P0 BLOCKER] Is search scoped to the user alone, or to a team/org/tenant?** The schema has no org or team model.\nWhy it matters: if results are wider than one user, a saved query replayed by someone else can leak rows across tenants.\nA) Per-user only. Re-run executes under the current user's permissions. Another user's `id` returns 404. [Recommended Default]\nB) Per-org. This needs an org model first, which blocks this feature.\n\n**4. [P0 BLOCKER] May query text leave the database, in PostHog events, logs, or toast copy?**\nWhy it matters: people type emails and names into search, and putting that in analytics is PII leakage.\nA) No. Events carry only `saved_search_id`, `query_length`, and `filter_count`. [Recommended Default]\nB) Yes, raw query text goes in events.\n\n**5. [P1 DESIGN CHOICE] At the 20-search cap, how does a user free a slot?** The PRD has no delete or rename.\nWhy it matters: a user at the cap hits a dead-end on save.\nA) Add delete and rename in the sidebar, and enforce the cap with a count-plus-insert in one transaction. [Recommended Default]\nB) Delete only, no rename.\n\nAssumed defaults if you reply `defaults` (all P1, I'll lock these and list them in the PRD):\n- Name is required, trimmed, 1–60 chars. Empty name falls back to a label derived from the query.\n- `unique(userId, name)`, with a 409 that shows an inline error.\n- `onDelete: Cascade` from `User`, matching `Session` and `Account`.\n- Index on `(userId, createdAt)` for the sidebar and the count.\n- Flag: PostHog feature flag `saved_searches`, default off. Read it server-side. `posthog-node` is installed but nothing wires it yet.\n- Kill switch: flag off hides the sidebar and leaves saved rows untouched.\n- Save endpoint rate-limited through the existing Upstash helper.\n- Toast on success and on failure. There's no toast library, so this adds one.\n- Telemetry: `saved_search_created`, `_failed`, and `_rerun` with `error_code`. KPI target is open; you need to set it.\n- Migration is additive, so code rollback is safe.\n\nReply like `1A 2A 3A 4A 5A`, or `defaults` to accept every recommendation. I haven't written the PRD file yet, and no application code has been touched. Once you answer, I'll write `docs/prd/saved-searches-prd.md` and validate it."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "interrogation-rubric.md",
+      "prd-template.md"
+    ],
+    "cost": 0.0126,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "20-slash-command",
+    "model": "haiku",
+    "category": "Explicit invocation",
+    "pressure": "none",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "/wheres-my-prd:grill-prd add a dark mode toggle to the dashboard",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 35,
+        "reply": "**Spec Readiness: 49/100 — BLOCKED (1 P0)**\nState 10/20 · Data 6/20 · Abuse 13/20 · Telemetry 8/20 · Rollout 12/20\n\nRecon findings that shape the questions:\n- `User` has no theme field (`prisma/schema.prisma`), so storing the preference in the DB means a migration.\n- `src/app/dashboard/page.tsx` is the only dashboard file. There is no `app/layout.tsx` and no CSS framework in `package.json`, so theming means CSS variables from scratch.\n- PostHog is already wired (`src/lib/analytics.ts`).\n\n```\n1. [P0 BLOCKER] Where should the theme preference be stored?\n   Why it matters: a DB column means a Prisma migration against the production User table, which is hard to undo once shipped.\n   A) httpOnly cookie, set by a server action, read in the layout so SSR renders the right theme [Recommended Default]\n   B) New User.theme column (migration; follows the user across devices)\n   C) localStorage only (no SSR, so users see a flash of the wrong theme on load)\n\n2. [P1 DESIGN CHOICE] Which options does the toggle offer?\n   Why it matters: a two-state toggle with no \"system\" option ignores OS preference and surprises users who expect it.\n   A) Light / Dark, with first-visit default taken from prefers-color-scheme [Recommended Default]\n   B) Light / Dark / System three-way picker\n   C) Light / Dark, first-visit default always light\n\n3. [P1 DESIGN CHOICE] What is the surface?\n   Why it matters: the cookie is read wherever the layout is mounted, so a global layout also changes the billing page.\n   A) Dashboard route only (dashboard/layout.tsx) [Recommended Default]\n   B) Whole app (create a root app/layout.tsx)\n\n4. [P1 DESIGN CHOICE] Should toggles be tracked in PostHog?\n   Why it matters: without an event you cannot tell whether anyone uses the feature.\n   A) Yes, one event `theme_changed` with `{ theme }` only, no email or user id in the payload [Recommended Default]\n   B) No analytics\n\n5. [P1 DESIGN CHOICE] How should it roll out?\n   Why it matters: without a flag, a bad CSS change hits every user at once and needs a full redeploy to revert.\n   A) Ship to all users, no flag; rollback is reverting one component [Recommended Default]\n   B) Gate behind a PostHog feature flag, default off\n\nReply like `1A 2B 3: cap at 5/day`, or `defaults` to accept every recommendation.\n```\n\nUnrelated to this feature: `src/app/dashboard/page.tsx` has no session check or redirect, so logged-out visitors get a \"Welcome undefined\" page. I'd treat that as a separate bug. I have not touched it.\n\nI have not written a PRD or any code, because the gate is closed until the P0 is answered. Once you reply, I'll write `docs/prd/dark-mode-toggle-prd.md`, validate it, and stop there, since this was a spec review."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.0093,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  }
+]

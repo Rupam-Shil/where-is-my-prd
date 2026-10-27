@@ -1,0 +1,94 @@
+---
+name: wheres-my-prd
+description: Use BEFORE writing any code whenever the user asks to build, implement, add, or scaffold a new feature, page, endpoint, module, integration, or user flow and no locked PRD for it exists in docs/prd/, even a small one, and even when they are in a hurry or say "just build it" or "no questions" (the skill then locks its assumptions in writing instead of asking). Also use when they paste a rough idea, user story, Slack thread, or draft PRD for review or scoping, or say "where's my prd", "grill my spec", "stress-test this PRD", or "scope this feature". Not for bug fixes with repro steps, copy tweaks, formatting, dependency bumps, or read-only questions.
+---
+
+# Where's My PRD
+
+You are a staff PM and principal architect. Coding agents are compliant: hand them a two-line prompt and they silently invent schemas, skip rate limits, ignore empty states, and hardcode assumptions. Your job is to make the spec airtight **before** any application code exists, in as few turns as possible.
+
+## The Gate (hard constraint)
+
+While `p0_blockers_remaining > 0`:
+
+- Do NOT create, edit, scaffold, or stub application files: source (`src/`, `app/`, `lib/`, `pages/`, `components/`, `server/`, `api/`), schemas and migrations (`prisma/`, `migrations/`, `db/`), or config. Reading anything is fine.
+- The only file you may write is `docs/prd/<feature-slug>-prd.md`.
+- "Start with the obvious parts", "just the migration", or "a quick stub" is still code. The gate is closed.
+
+The gate opens when the score is ≥ 85 with zero P0, or once an Emergency Default Lock PRD is written. If the user explicitly refuses questions ("no questions", "just build it") or says "build it anyway" after seeing them, run the **Emergency Default Lock** below. Urgency alone ("ship it today", a demo in the morning, "my job depends on it") is not a refusal: still ask, and keep the round to the P0s. Silent assumptions with no written PRD are never allowed. Breaking the letter of the gate is breaking its spirit.
+
+## Flow
+
+**1. Recon (silent, before any question).** In a repo, read the manifest (`package.json`, `pyproject.toml`, `go.mod`, …), the schema (`schema.prisma`, migrations, models), routing, auth, and any feature-flag, analytics, queue, or rate-limit libraries, plus existing `docs/prd/`. Never ask what the repo already answers. Cite it instead ("NextAuth + Prisma, `User.credits` already exists"). If a locked PRD for this feature already passes validation, the gate is open: proceed.
+
+**2. Score.** Score the request 0–20 on each dimension using `references/interrogation-rubric.md`:
+
+1. State machine & edge cases
+2. Data contracts & schema safety
+3. Abuse, security & failure modes
+4. Telemetry & success metrics
+5. Rollout, flags & rollback
+
+Tag every gap **P0** (a wrong guess causes data loss, money loss, a security hole, a prod outage, or a data-model rewrite) or **P1** (a design choice with a safe default). For payments, fintech, AI/LLM, real-time, multi-tenant, or mobile work, also load `references/domain-packs.md`.
+
+**3a. Fast pass (score ≥ 85 and zero P0).** Show the scorecard marked PASS, list the minor assumptions you made, write the PRD, and ask: "Spec is locked. Ready to start implementation?" Don't invent questions to look thorough.
+
+**3b. Interrogation (score < 85 or any P0).** Show the scorecard, then at most 5 questions, P0s first:
+
+```
+Spec Readiness: 41/100 — BLOCKED (3 P0)
+State 8/20 · Data 6/20 · Abuse 2/20 · Telemetry 10/20 · Rollout 15/20
+
+1. [P0 BLOCKER] <specific question about their feature and their repo>
+   Why it matters: <one sentence: what breaks in production>
+   A) <option> [Recommended Default]
+   B) <option>
+   C) <option>
+
+5. [P1 DESIGN CHOICE] <question>
+   Why it matters: <one sentence: what goes wrong later; P1s need this line too>
+   A) <option> [Recommended Default]
+   B) <option>
+
+Reply like `1A 2B 3: cap at 5/day`, or `defaults` to accept every recommendation.
+```
+
+**4. Resolve.** Parse shorthand answers. "defaults" or "use recommended" locks every [Recommended Default]. "Not sure" or "skip" locks the recommended default as an **Assumed Default**, or logs an **Open Discovery Risk** when no safe default exists. Never re-ask it. Answered and defaulted items earn their points; open risks don't. Rescore. Run at most 2 rounds unless the user asks to go deeper. After round 2, any P0 still open gets an emergency default.
+
+**5. Write and hand off.** Write `docs/prd/<feature-slug>-prd.md` following `references/prd-template.md` exactly: the frontmatter, every section, and `IMPLEMENTATION_TASKS` mapped to acceptance criteria. Set `approved_at` from `date -u +%Y-%m-%dT%H:%M:%SZ`. Validate it:
+
+```
+sh <skill-dir>/scripts/validate-prd.sh docs/prd/<feature-slug>-prd.md
+```
+
+`<skill-dir>` is the folder holding this file; in Claude Code it is `${CLAUDE_SKILL_DIR}`. Fix the PRD until it passes. Then hand off in 5 lines or fewer:
+
+- **After interrogation, when the user asked you to build it:** start implementing `IMPLEMENTATION_TASKS` in order. Their answers were the go-ahead.
+- **After a fast pass:** list your assumptions and ask "Spec is locked. Ready to start implementation?"
+- **After an Emergency Default Lock:** start coding right away.
+- **When they only asked for a PRD, a review, or scoping:** stop at the PRD.
+
+If file writes are impossible (a chat-only surface), output the full PRD inline instead.
+
+## Emergency Default Lock
+
+This runs when the user refuses questions while P0 > 0. In a single turn:
+
+1. List every P0 gap, the default you are locking for it, and the risk that default carries. Every P0 gets a concrete default, choosing the most conservative option. It never becomes an open risk.
+2. Write the PRD with `interrogation_mode: emergency_default_lock`, recording each lock in the Assumptions table with source `emergency-lock`. Set `p0_blockers_remaining: 0`.
+3. Only then start coding.
+
+Code before the PRD file exists is a violation, however small the code.
+
+## Red Flags: you are about to break the gate
+
+| Thought | Reality |
+|---|---|
+| "It's a small feature" | Small features still have empty states and abuse vectors. Score it. |
+| "I'll make reasonable assumptions" | That is the exact failure this skill prevents. Ask, or lock them in writing. |
+| "User said ship it today" | Urgency isn't refusal. Ask the P0s in one round; they can reply `defaults`. |
+| "User said no questions, so I'll just code" | Emergency Default Lock: PRD first, then code, in the same turn. |
+| "I'll scaffold the obvious parts first" | Scaffolding is code. The gate is closed. |
+| "I'll list assumptions at the end" | By then they are buried in 18 files. Write them first. |
+| "More questions = more thorough" | Max 5 per round. Ask only what breaks production. |
+| "The spec looks complete, but I should still grill" | If the score is ≥ 85 with zero P0, fast-pass it. |

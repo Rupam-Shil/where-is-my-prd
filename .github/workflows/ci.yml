@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shellcheck
+        run: shellcheck -s sh skills/wheres-my-prd/scripts/validate-prd.sh scripts/*.sh scripts/demo/*.sh tests/*.sh
+
+      - name: Test suite (sh, dash, bash)
+        run: sh tests/run.sh
+
+      - name: Action validates the example PRDs
+        uses: ./
+        with:
+          paths: examples/prd
+
+      - name: Eval harness and demo scripts parse
+        run: |
+          python3 -m py_compile evals/run.py
+          node --check scripts/demo/take-one-export.mjs
+          python3 -c "import json; json.load(open('evals/scenarios.json'))"

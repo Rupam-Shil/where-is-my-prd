@@ -1,0 +1,23 @@
+{
+  "name": "wheres-my-prd",
+  "description": "Pre-code spec gate for AI coding agents. Interrogates vague feature requests across 5 dimensions (state machine, data contracts, abuse, telemetry, rollout) and locks an implementation-ready PRD before any code is written.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Rupam Shil",
+    "url": "https://github.com/Rupam-Shil"
+  },
+  "homepage": "https://github.com/Rupam-Shil/where-is-my-prd",
+  "repository": "https://github.com/Rupam-Shil/where-is-my-prd",
+  "license": "MIT",
+  "icon": "./.claude-plugin/icon.png",
+  "keywords": [
+    "prd",
+    "product-management",
+    "spec",
+    "requirements",
+    "planning",
+    "guardrails",
+    "pre-code",
+    "skills"
+  ]
+}

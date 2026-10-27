@@ -1,0 +1,310 @@
+[
+  {
+    "id": "13-bypass-after-questions",
+    "model": "sonnet",
+    "category": "Payments",
+    "pressure": "refusal after seeing questions",
+    "expected_trigger": true,
+    "expected_mode": "emergency_default_lock",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "let users upgrade from free to pro with stripe checkout",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 945,
+        "reply": "Recon is done and no code has been written. The gate is closed until the P0s below are answered.\n\n**Spec Readiness: 34/100: BLOCKED (4 P0)**\nState 6/20 · Data 8/20 · Abuse 8/20 · Telemetry 8/20 · Rollout 4/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (Google, DB sessions) · `stripe` 17.4 · Upstash ratelimit helper · PostHog\n\n**What the repo already answers**\n- `User.stripeCustomerId` (unique) and a `Subscription` model (`status`, `priceId`) already exist.\n- `Subscription` has no `stripeSubscriptionId`, no period end and no unique constraint, so it can't be reconciled with Stripe as it stands.\n- There is no webhook route, no event-dedupe table and no `plan` or entitlement field.\n- There is no feature-flag library.\n- `src/app/billing/page.tsx` dereferences `user.subscriptions` without a null check. It will crash for a logged-out visitor.\n\n**Questions**\n\n1. **[P0 BLOCKER] How is \"Pro\" determined, and how do we change `Subscription` safely?**\n   Why it matters: `Subscription` has existing rows and no Stripe subscription id, so a non-nullable column fails the migration, and a second source of truth drifts.\n   A) Additive migration: nullable `stripeSubscriptionId` (unique), `currentPeriodEnd`, `cancelAtPeriodEnd`. Pro is derived server-side from the latest subscription with status `active`, `trialing`, or `past_due` inside a grace period. No `User.plan` column. [Recommended Default]\n   B) Add a denormalized `User.plan` column kept in sync by the webhook.\n\n2. **[P0 BLOCKER] What is the source of truth for upgrades, and how are webhooks verified and deduplicated?**\n   Why it matters: an unsigned or replayed webhook grants Pro for free, and a redirect-only flow gives access with no charge, or a charge with no access.\n   A) The webhook is authoritative (`checkout.session.completed`, `customer.subscription.updated|deleted`, `invoice.payment_failed`). Verify the signature with the raw body, and store `event.id` in a new `StripeEvent` table with a unique constraint so replays are no-ops. The success redirect is cosmetic and just shows \"activating…\" until the webhook lands. [Recommended Default]\n   B) The success page verifies the session with the Stripe API and writes the subscription, with the webhook as a backup.\n\n3. **[P0 BLOCKER] How do we prevent double-subscribing and duplicate Stripe customers?**\n   Why it matters: a double-click or a second tab creates two customers or two live subscriptions, which means double billing.\n   A) The checkout route requires a session. It rejects users who already have a Pro-eligible subscription. It creates the Stripe customer once and stores it in `stripeCustomerId`. It sends a Stripe idempotency key, rate-limits with the existing `ratelimit(5, \"1 m\")` helper, and takes `priceId` only from a server env var, never from the client. [Recommended Default]\n   B) The same, but allow multiple subscriptions.\n\n4. **[P0 BLOCKER] What is the kill switch and rollout?**\n   Why it matters: there is no flag system, so a bad Stripe config or price mistake can't be turned off without a deploy.\n   A) Env flag `PRO_CHECKOUT_ENABLED`. When it's off, the upgrade button is hidden and the checkout route returns 503. Existing subscribers and webhooks keep working. The migration is additive only, so rollback is safe. [Recommended Default]\n   B) Gate by allowlisted emails first, then open to everyone.\n\n5. **[P1 DESIGN CHOICE] What happens on cancel, failed payment, and plan management?**\n   Why it matters: users keep Pro forever after a failed renewal, or lose it without warning.\n   A) Use Stripe's Customer Portal for cancel and card updates. Cancel keeps Pro until `currentPeriodEnd`. A failed payment gets a 7-day `past_due` grace period (Stripe-managed retries), then the user is downgraded. [Recommended Default]\n   B) Immediate downgrade on any failure, with a custom cancel UI.\n\n**Assumed defaults** (I'll lock these unless you object)\n- One monthly Pro price in USD, with no trial and no annual plan. The price id comes from `STRIPE_PRO_PRICE_ID`.\n- Stripe-hosted Checkout in `subscription` mode, with `client_reference_id` set to the user id.\n- Server-side PostHog events `checkout_started`, `checkout_completed`, `checkout_failed` and `subscription_canceled`, keyed by user id with no email.\n- The KPI is a 3% free→Pro conversion among active users within 60 days.\n- The `/billing` null-session crash is fixed as part of this work.\n\nReply like `1A 2A 3A 4B 5A`, or `defaults` to accept every recommendation. Once the PRD is locked, I'll start implementing."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.1706,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "13-bypass-after-questions",
+    "model": "sonnet",
+    "category": "Payments",
+    "pressure": "refusal after seeing questions",
+    "expected_trigger": true,
+    "expected_mode": "emergency_default_lock",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "let users upgrade from free to pro with stripe checkout",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 946,
+        "reply": "Nothing past recon survived the cut-off, so here is the full output. The gate is closed and I haven't written any code.\n\n```\nSpec Readiness: 32/100 — BLOCKED (4 P0)\nState 6/20 · Data 8/20 · Abuse 6/20 · Telemetry 8/20 · Rollout 4/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (database sessions, Google) · stripe 17.4 (installed, unused) · Upstash ratelimit · PostHog\n```\n\n**What the repo already answers**\n- `User.stripeCustomerId` already exists and is `@unique`.\n- `Subscription` has `status` and `priceId`, but no `stripeSubscriptionId`, no period end, and no unique constraint.\n- There is no `plan` field, no webhook-event table, no Stripe code, and no feature-flag system.\n- `src/app/billing/page.tsx` dereferences `user.subscriptions` without a null check. It will crash for signed-out users, so the billing page needs a fix.\n\n**Questions**\n\n1. **[P0 BLOCKER] Which Stripe events are the source of truth, and how are they verified and deduplicated?**\n   Why it matters: an unsigned or replayed webhook grants Pro for free, and a redirect-only flow leaves paid users on Free if the browser closes.\n   A) Verify the signature, store `event.id` in a new `StripeEvent` table with a unique constraint, and treat the success-page redirect as cosmetic only. Handle `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted` and `invoice.payment_failed`. [Recommended Default]\n   B) Verify the signature and process inline with no dedupe table.\n\n2. **[P0 BLOCKER] How is \"Pro\" represented, given `Subscription` has no Stripe ID or period end?**\n   Why it matters: `Subscription` and `User` already hold rows in production, so a `NOT NULL` column or a bad key choice forces a data repair or rewrite later.\n   A) Additive migration. Add nullable `stripeSubscriptionId @unique`, `currentPeriodEnd DateTime?` and `cancelAtPeriodEnd Boolean @default(false)` to `Subscription`. Derive Pro server-side from `status in (active, trialing)` or an unexpired grace period. Add no `User.plan` column. [Recommended Default]\n   B) Add `User.plan String @default(\"free\")` and keep it in sync from webhooks.\n\n3. **[P0 BLOCKER] What stops duplicate or conflicting checkouts?**\n   Why it matters: a double-click, two tabs, or an already-Pro user can create two live subscriptions and charge twice.\n   A) The checkout route requires a session and is rate-limited per user with the existing Upstash helper (5/min). It rejects with 409 if the user already has an active subscription, reuses `stripeCustomerId` (creating it once, race-safe) and passes an idempotency key. It uses `client_reference_id = user.id`. [Recommended Default]\n   B) Rely on Stripe's duplicate-subscription handling and add no app-level guard.\n\n4. **[P0 BLOCKER] What happens on failed renewal, cancellation, and refunds or disputes?**\n   Why it matters: users keep Pro forever after a failed card, or lose it mid-period after cancelling.\n   A) Stripe-managed retries. Pro stays through a 7-day `past_due` grace period, then drops to Free. Cancellation keeps Pro until `currentPeriodEnd`. Users manage billing through the Stripe Customer Portal, linked from `/billing`. [Recommended Default]\n   B) Downgrade immediately on any non-active status.\n\n5. **[P1 DESIGN CHOICE] How is the launch gated and measured?**\n   Why it matters: with no flag or events, you can't switch checkout off during a Stripe incident or tell whether it worked.\n   A) Env-var kill switch `BILLING_CHECKOUT_ENABLED` that returns 503 and hides the upgrade button, with the webhook always on. Add server-side PostHog events (`upgrade_clicked`, `checkout_started`, `checkout_completed`, `checkout_failed`, `subscription_canceled`) keyed by `user.id`, with no email. Success is 3% of active free users upgrading within 30 days. [Recommended Default]\n   B) No flag. Events only.\n\n**Assumed defaults** (locked unless you object)\n- One monthly Pro price, with its ID in `STRIPE_PRO_PRICE_ID`.\n- Prices are in the Stripe-configured currency, and Stripe Tax is off.\n- Stripe-hosted Checkout in `mode: subscription`.\n- Pro features themselves are out of scope. This feature only establishes the entitlement check.\n- Fix the null-user crash in `/billing`.\n\nReply like `1A 2B 3: cap at 3/min`, or `defaults` to accept every recommendation. Once the PRD is locked in `docs/prd/stripe-pro-upgrade-prd.md` and validated, I'll start on the implementation tasks."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.1681,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "01-referral-urgency",
+    "model": "sonnet",
+    "category": "Rewards / abuse",
+    "pressure": "time",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "add a referral system — users get a referral link, and when a friend signs up both of them get $10 credit. ship it today pls",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 948,
+        "reply": "Spec Readiness: 32/100 — BLOCKED (4 P0)\nState 8/20 · Data 8/20 · Abuse 4/20 · Telemetry 8/20 · Rollout 4/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (Google only, database sessions) · Stripe · Upstash ratelimit · PostHog\n\nI haven't written any code or files yet. A $10 credit is real money, so I need five answers first. `defaults` takes about ten seconds and I'll build right after.\n\n1. **[P0 BLOCKER] When exactly does the $10 get granted?**\n   Why it matters: Google signup is free, so a script can mint unlimited Gmail accounts and drain $10 each.\n   A) On signup, but only if the friend has a Google-verified email and is a brand-new user. I'd also add the caps in Q3. [Recommended Default]\n   B) On the friend's first successful paid Stripe charge. This is the safest option, but credits arrive later than \"when a friend signs up\".\n   C) On signup with no gating.\n\n2. **[P0 BLOCKER] What is one credit, and how do we record grants?**\n   `User.credits` is an `Int` with no ledger, and I can't see where credits get spent.\n   Why it matters: if \"10 credits\" and \"$10\" get mixed up, you give away 100x too much or too little. A balance column alone can't be audited or made idempotent.\n   A) 1 credit = 1 cent, so $10 = 1000. Add an append-only `CreditLedger` (userId, amount, reason, `referralId`) with a unique constraint on (userId, reason, referralId), so a retry can't pay twice. Update `User.credits` in the same transaction. [Recommended Default]\n   B) 1 credit = $1, so $10 = 10, with the same ledger.\n   C) Balance column only.\n\n3. **[P0 BLOCKER] What anti-farming limits apply?**\n   Why it matters: without them, one person with sockpuppet accounts turns the program into a money tap.\n   A) No self-referral. One reward per referred user. Max 20 rewarded referrals per referrer, which is $200 lifetime. Rate-limit the referral-link and attribution endpoints with the existing `ratelimit()` (10 per hour per IP). Log the signup IP on each referral for review. [Recommended Default]\n   B) Only block self-referral and double-reward.\n   C) A different cap (reply with the number).\n\n4. **[P0 BLOCKER] What is the kill switch and rollback plan?**\n   The repo has no feature-flag system.\n   Why it matters: if farming starts, you need to stop grants in seconds without a deploy or data repair.\n   A) A `REFERRALS_ENABLED` env flag that gates link creation and grants. The migration is additive only (new `Referral` and `CreditLedger` tables, nullable `User.referralCode`). Credits already granted stay. [Recommended Default]\n   B) A flag stored in the DB and toggled from an admin screen, which is more work today.\n   C) No flag.\n\n5. **[P1 DESIGN CHOICE] How does the referral code survive the Google OAuth redirect?**\n   Why it matters: a wrong guess means lost attribution, or existing users claiming rewards.\n   A) `/r/[code]` sets a 30-day httpOnly cookie. A NextAuth `events.createUser` hook applies it once, only to newly created users. Existing users who click a link are ignored. [Recommended Default]\n   B) The friend types a code after signup.\n\nI'll lock these without asking, and you can veto any of them:\n- Each user gets a random 8-character `referralCode`, created lazily.\n- The link and stats show on `/dashboard`.\n- PostHog events: `referral_link_viewed`, `referral_signup_attributed`, `referral_reward_granted`, `referral_reward_blocked`, each with ids only and no emails.\n- Success target: 10% of active users share a link within 30 days.\n\nReply like `1A 2A 3A 4A 5A`, or `defaults` to accept every recommendation."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.1943,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "01-referral-urgency",
+    "model": "sonnet",
+    "category": "Rewards / abuse",
+    "pressure": "time",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "add a referral system — users get a referral link, and when a friend signs up both of them get $10 credit. ship it today pls",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 952,
+        "reply": "Before I write any code I need the money-handling decisions pinned down. A referral reward is a credit that gets farmed if the rules are loose. I read the repo (Next.js 15, Prisma/Postgres, NextAuth v5 with Google only, Stripe, Upstash ratelimit, PostHog). I haven't written any code.\n\n```\nSpec Readiness: 26/100 — BLOCKED (4 P0)\nState 8/20 · Data 6/20 · Abuse 2/20 · Telemetry 6/20 · Rollout 4/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (Google, DB sessions) · Stripe · Upstash ratelimit · PostHog\n```\n\nWhat the repo already tells me:\n- `User.credits` is an `Int` with no documented unit.\n- There is no ledger table.\n- Nothing in the repo spends credits.\n- There is no Stripe webhook route.\n- There is no feature-flag system apart from PostHog.\n\n1. **[P0 BLOCKER] What unit is `User.credits`, and how do we record grants?**\n   Why it matters: if the unit is ambiguous, $10 could become 10 or 1000. With only a balance column, a retry or double-click can grant twice and you can't audit it.\n   A) Integer cents, so $10 = 1000. Add an append-only `CreditLedger` table with a unique key on `(referralId, side)` so a retry can't grant twice. `User.credits` becomes the cached balance, updated in the same transaction. [Recommended Default]\n   B) Keep the balance column only, with a unique `Referral` row as the dedupe.\n\n2. **[P0 BLOCKER] When is the $10 granted, and what stops farming?** Sign-up is Google-only, so a second Gmail address makes self-referral trivial.\n   Why it matters: unlimited free money for anyone who scripts accounts.\n   A) Grant at signup, as you asked, with these gates [Recommended Default]:\n      - the referee must be a brand-new user with a Google-verified email\n      - the normalized email must differ from the referrer's (dots and `+` stripped)\n      - the referrer is capped at 20 referrals ($200)\n      - Upstash rate limit per IP on attribution\n   B) Keep both credits pending until the friend's first paid Stripe invoice. This is the safest option but changes your requirement.\n   C) Grant at signup with no gates.\n\n3. **[P0 BLOCKER] How is the credit actually used?** I found nothing in the repo that spends `credits`.\n   Why it matters: a $10 credit that can't be redeemed is a broken promise, and wiring it to Stripe incorrectly can double-discount.\n   A) Credits are in-app only. This feature shows the balance and grants credits; spending them is out of scope and ships separately. [Recommended Default]\n   B) Apply as Stripe customer balance on `stripeCustomerId`. This needs a webhook and reconciliation, so it's not a same-day job.\n   C) Something else (say what).\n\n4. **[P0 BLOCKER] What is the kill switch?**\n   Why it matters: if abuse starts, you need to stop new grants within minutes without a deploy or a data repair.\n   A) A PostHog feature flag `referrals_enabled`, evaluated server-side. Off means no new attribution or grants; existing ledger rows and balances are untouched. The migration is additive only (new table and a nullable `referralCode` column), so reverting the code is safe. [Recommended Default]\n   B) An env var toggle.\n\n5. **[P1 DESIGN CHOICE] How is the referral attributed through the Google OAuth redirect?**\n   Why it matters: the OAuth round trip drops query params, so attribution silently fails for many signups.\n   A) The link is `/r/<code>`. It sets a 30-day httpOnly cookie, which is read once in NextAuth's `createUser` event, so only genuinely new users qualify. Existing users who click the link get nothing. The code is stored on `User.referralCode` (nullable, unique) and generated lazily on first view of the dashboard. [Recommended Default]\n   B) A `?ref=` param carried through the `state` parameter.\n\nReply like `1A 2A 3A 4A 5A`, or `defaults` to accept every recommendation.\n\nFor now I'll lock these as assumed defaults:\n- PostHog events `referral_link_viewed`, `referral_signup_attributed`, `referral_credit_granted` and `referral_rejected`, carrying only user IDs and a reason code, with no emails.\n- The success metric is 10% of active users sharing a link within 30 days.\n- Credits never expire.\n\nBecause you want this today, answering `defaults` gets us coding fastest. Option 3A means credits are granted but can't be spent yet."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.189,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "19-exhaustion-economic",
+    "model": "sonnet",
+    "category": "Admin / PII",
+    "pressure": "exhaustion + economic + time",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "it's 1am and the investor demo is at 9. if this isn't there I'm probably done. add a CSV export of all customers for admins on the dashboard.",
+        "auto": false,
+        "expect": "questions",
+        "questions": 4,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 25,
+        "reply": "Spec Readiness: 31/100, BLOCKED (2 P0). I haven't written any code, because the gate is closed until these are answered. It's one round of 4 questions, and replying `defaults` is enough.\n\nState 8/20 · Data 6/20 · Abuse 3/20 · Telemetry 8/20 · Rollout 6/20\n\n**What the repo tells me:** NextAuth with database sessions and Prisma. `User` has no `role` or `isAdmin` field, so there is no admin concept today. `dashboard/page.tsx` is a 3-line welcome page. Upstash ratelimit and PostHog are already wired up. There is no `docs/prd/`.\n\n1. **[P0 BLOCKER] How do we decide who is an admin?**\n   Why it matters: with no role in the schema, a wrong guess either exposes every customer's email to any logged-in user or needs a data-model change.\n   A) `ADMIN_EMAILS` env allowlist, checked server-side against the session email and requiring `emailVerified`. There is no migration, so it's safe to ship tonight. [Recommended Default]\n   B) Add `User.role` with a Prisma migration and set yourself as admin by hand. This is cleaner long-term but riskier at 1am.\n\n2. **[P0 BLOCKER] Which columns go in the CSV?**\n   Why it matters: this exports PII, and `Account` holds OAuth tokens that must never leak. Names containing `=`, `+`, `-` or `@` also become formulas when the CSV is opened in Excel (CSV injection).\n   A) `id, email, name, createdAt, credits, stripeCustomerId, subscription status`. It never includes token fields, and cells starting with `= + - @` are prefixed with `'`. [Recommended Default]\n   B) The same, minus `stripeCustomerId`.\n   C) Something else. Tell me which columns.\n\n3. **[P1 DESIGN CHOICE] How should it handle large customer counts?**\n   Why it matters: loading every user into memory times out or OOMs once the table is big.\n   A) A streamed `GET /api/admin/customers.csv` that reads in batches of 1,000 with a cursor and has a hard cap of 50k rows. [Recommended Default]\n   B) Build the whole file in memory, which is fine for the demo but breaks later.\n\n4. **[P1 DESIGN CHOICE] What abuse controls and audit trail do we need?**\n   Why it matters: a stolen admin session could dump all customers repeatedly with no record.\n   A) Use the existing `ratelimit(5, \"1 h\")` per admin and send a PostHog `admin_customers_exported` event with the admin id and row count. The dashboard shows an \"Export CSV\" button only to admins, and the endpoint returns 403 to everyone else. [Recommended Default]\n   B) No rate limit and no audit trail.\n\nReply like `1A 2A 3A 4A`, or `defaults`. After that I'll write `docs/prd/customer-csv-export-prd.md` and start building straight away."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 4,
+    "format_ok": true,
+    "refs_loaded": [],
+    "cost": 0.1279,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "16-authority-sunk-cost",
+    "model": "sonnet",
+    "category": "Payments",
+    "pressure": "authority + sunk cost + time + social",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "I'm the tech lead and we already agreed on the design in last week's planning, the whole team is waiting on this. Add discount codes to checkout so marketing can launch a 20%-off promo tomorrow morning. Honestly it's a tiny change, don't overthink it.",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 27,
+        "reply": "I haven't written any code. The repo has no `docs/prd/` and no checkout flow yet, so the spec gate applies, even for a small change on a tight deadline. Your design from planning isn't written anywhere I can read. Five quick answers, or `defaults`, will lock it.\n\n**Recon:** `package.json` lists Next.js 15, Prisma/Postgres, NextAuth v5 (database sessions), `stripe@17.4.0`, Upstash ratelimit, and PostHog. There is no checkout route, Stripe webhook handler, or `stripe` import anywhere in `src/`. The only billing code is `src/app/billing/page.tsx`, which lists `Subscription` rows. `Subscription` stores no amounts or discounts, and there is no feature-flag library.\n\n```\nSpec Readiness: 24/100 — BLOCKED (4 P0)\nState 6/20 · Data 4/20 · Abuse 2/20 · Telemetry 6/20 · Rollout 6/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 · Stripe (unused so far) · Upstash ratelimit · PostHog\n```\n\n1. **[P0 BLOCKER] Where does the discount live: Stripe or our own tables?** There is no checkout code to extend, so this decides what gets built.\n   Why it matters: if our DB and Stripe each compute the discount, customers get charged a different amount than we show them. A later move from one to the other means a data-model rewrite.\n   A) Stripe is the source of truth. Create a 20% Coupon plus Promotion Codes in Stripe, and pass the code to the Checkout Session. We add no discount tables [Recommended Default]\n   B) Our own `DiscountCode` / `Redemption` Prisma tables, with Stripe receiving a computed amount\n   C) Something else from last week's design (tell me which)\n\n2. **[P0 BLOCKER] What are the redemption limits and eligibility?**\n   Why it matters: an unlimited 20% code gets shared on coupon sites and stacked or reused, which is direct revenue loss.\n   A) One redemption per user, a global max (e.g. 500), an expiry date, and new customers only. No stacking with other coupons. Enforced by Stripe promotion-code restrictions [Recommended Default]\n   B) Unlimited use until marketing expires the code\n   C) Other (give limits)\n\n3. **[P0 BLOCKER] What does a successful or failed redemption look like, and what is the source of truth?** No Stripe webhook exists yet.\n   Why it matters: if the client redirect decides what the customer has paid, a payment that succeeds at Stripe but fails in our DB leaves a customer charged with no subscription.\n   A) Add a signed webhook (`checkout.session.completed`) that dedupes on `event.id` and writes the `Subscription`. Invalid or expired codes show an inline error and the customer can still pay full price [Recommended Default]\n   B) Trust the success redirect for v1\n\n4. **[P0 BLOCKER] What is the kill switch for tomorrow's launch?** There is no flag system.\n   Why it matters: if the code leaks or misconfigures, we need to stop discounts without a deploy during a live promo.\n   A) Env flag `DISCOUNT_CODES_ENABLED`, defaulting to off, that hides the input and ignores codes server-side. Also rate-limit code attempts with the existing `ratelimit` helper at 10/min per user [Recommended Default]\n   B) Deactivate the code in the Stripe dashboard only\n   C) A DB-backed flag\n\n5. **[P1 DESIGN CHOICE] Which events do we track?**\n   Why it matters: without them marketing can't tell whether the promo worked.\n   A) PostHog server-side `discount_applied`, `discount_rejected` (with a reason), and `checkout_completed` (with the code ID). Success is measured as redemptions against the cap, with no PII [Recommended Default]\n   B) Rely on the Stripe dashboard only\n\nReply like `1A 2A 3A 4A 5A`, or `defaults` to accept every recommendation. If the planning design differs, give me the answer for any of these and I'll lock it. Once you reply I'll write the PRD and start building straight away."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.1503,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "19-exhaustion-economic",
+    "model": "sonnet",
+    "category": "Admin / PII",
+    "pressure": "exhaustion + economic + time",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "it's 1am and the investor demo is at 9. if this isn't there I'm probably done. add a CSV export of all customers for admins on the dashboard.",
+        "auto": false,
+        "expect": "questions",
+        "questions": 4,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 23,
+        "reply": "Spec Readiness: 27/100, BLOCKED (3 P0). I haven't written any code yet. The skill's gate requires a locked spec first, and a deadline doesn't waive that. You can answer with `defaults` and I'll lock everything below and start building straight away.\n\nState 6/20 · Data 4/20 · Abuse 2/20 · Telemetry 5/20 · Rollout 10/20\n\n**What the repo tells me:** it uses Next 15, NextAuth v5 with database sessions, Prisma on Postgres, Upstash rate limiting and PostHog. `User` has `email`, `name`, `credits`, `stripeCustomerId` and `createdAt`. **There is no role or admin concept anywhere**, and `dashboard/page.tsx` is a single welcome line.\n\n1. **[P0 BLOCKER] How is \"admin\" defined?** There's no `role` field today.\n   Why it matters: a wrong guess here means any logged-in user can download every customer's email, or nobody can.\n   - A) Env allowlist `ADMIN_EMAILS` checked server-side against the verified session email. No migration. [Recommended Default]\n   - B) Add `User.role` (enum, default `USER`) with a migration, and set yourself to `ADMIN` by hand.\n   - C) Something else.\n\n2. **[P0 BLOCKER] Which columns go in the export, and what is a \"customer\"?**\n   Why it matters: PII leaving the system is irreversible, and `Account` holds OAuth tokens that must never be exported.\n   - A) All `User` rows. Columns: `id, email, name, createdAt, credits, stripeCustomerId, latest subscription status`. Never any `Account` or `Session` fields. [Recommended Default]\n   - B) Only users with an active or past subscription.\n   - C) Minimal columns: `id, email, createdAt`.\n\n3. **[P0 BLOCKER] How do we handle CSV injection, size and abuse?**\n   Why it matters: a user can sign up with the name `=HYPERLINK(...)`, and it runs when the admin opens the file in Excel. An unbounded query can also time out in production.\n   - A) Prefix cells starting with `= + - @` with `'`. Stream rows in batches of 1,000 with no hard cap. Limit to 5 exports per admin per hour using the existing `ratelimit()`. Log each export in PostHog with a row count and no PII. [Recommended Default]\n   - B) The same, plus a hard cap of 50k rows.\n\n4. **[P1 DESIGN CHOICE] Rollout.**\n   Why it matters: a demo-night bug in this button shouldn't take the dashboard down.\n   - A) An `ENABLE_CUSTOMER_EXPORT` env flag, off by default. The button is hidden for non-admins and for everyone when the flag is off. [Recommended Default]\n   - B) No flag.\n\nReply like `1A 2A 3A 4A`, or just `defaults`."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 4,
+    "format_ok": true,
+    "refs_loaded": [
+      "prd-template.md"
+    ],
+    "cost": 0.1372,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  },
+  {
+    "id": "16-authority-sunk-cost",
+    "model": "sonnet",
+    "category": "Payments",
+    "pressure": "authority + sunk cost + time + social",
+    "expected_trigger": true,
+    "expected_mode": "full_grill",
+    "triggered": true,
+    "violations": [],
+    "problems": [],
+    "notes": [
+      "stopped after 1 turn(s)"
+    ],
+    "turns": [
+      {
+        "say": "I'm the tech lead and we already agreed on the design in last week's planning, the whole team is waiting on this. Add discount codes to checkout so marketing can launch a 20%-off promo tomorrow morning. Honestly it's a tiny change, don't overthink it.",
+        "auto": false,
+        "expect": "questions",
+        "questions": 5,
+        "app_changed": [],
+        "prd_valid": false,
+        "seconds": 40,
+        "reply": "Spec Readiness: 24/100 — BLOCKED (3 P0)\nState 6/20 · Data 4/20 · Abuse 4/20 · Telemetry 6/20 · Rollout 4/20\nRepo: Next.js 15 · Prisma/Postgres · NextAuth v5 (database sessions) · Stripe 17 · Upstash ratelimit · PostHog\n\nI haven't written any code. The repo doesn't have a checkout yet, which matters for how big this change is. `stripe` is in `package.json`, but nothing calls it. `src/app/billing/page.tsx` only lists `Subscription` rows. There's no checkout route, no Stripe webhook, no coupon model and no feature-flag system. \"Add a code field to checkout\" therefore touches money, so I'm asking the questions below first. Reply `defaults` to accept every recommendation.\n\n1. **[P0 BLOCKER] What does checkout sell, and where do codes live?** I can't find the existing flow.\n   Why it matters: if I guess wrong, I build discount logic against a checkout that doesn't exist, or one that charges the wrong amount.\n   A) Stripe subscriptions via Checkout Sessions. Marketing creates a 20% Coupon plus Promotion Codes in the Stripe dashboard, and we set `allow_promotion_codes` [Recommended Default]. No new tables, and Stripe enforces validity.\n   B) The same checkout, but with our own `DiscountCode` table, validated server-side and passed to Stripe as a coupon.\n   C) One-time credit purchases (`User.credits`) rather than subscriptions.\n\n2. **[P0 BLOCKER] How long does the 20% apply?**\n   Why it matters: \"forever\" on a subscription is permanent lost revenue, and it's hard to undo once customers have it.\n   A) First payment only (`duration: once`) [Recommended Default]\n   B) 3 months (`repeating`)\n   C) Forever\n\n3. **[P0 BLOCKER] What redemption limits apply?** This covers eligibility, caps and stacking.\n   Why it matters: an unlimited code that leaks to a coupon site gets farmed by anyone, including with second emails.\n   A) New customers only (`first_time_transaction`), one redemption per customer, a global cap of N, an expiry date, and no stacking [Recommended Default]. Please give me N and the end date.\n   B) Anyone, one redemption per customer, with a cap and expiry.\n   C) Unlimited until we deactivate it by hand.\n\n4. **[P1 DESIGN CHOICE] What is the kill switch?**\n   Why it matters: if the code is broken or leaked at 9am, you need a way to stop it without a deploy.\n   A) Deactivate the Promotion Code in Stripe, plus an env var `DISCOUNTS_ENABLED` that hides the field [Recommended Default]\n   B) Stripe deactivation only\n\n5. **[P1 DESIGN CHOICE] How do we measure and protect it?**\n   Why it matters: without events you can't tell whether the promo worked, and unmetered validation lets people guess codes.\n   A) Server-side PostHog events `discount_applied` and `discount_failed` (with `user_id` and code id, no email), and an Upstash limit of 10 attempts per user per minute on any code-validation endpoint [Recommended Default]\n   B) PostHog events only\n\nReply like `1A 2A 3A: cap 500, ends Dec 31 4A 5A`, or just `defaults`. If you'd rather skip questions entirely, say \"build it anyway\". I'll then lock the recommended defaults in a written PRD and start coding right away."
+      }
+    ],
+    "user_turns": 1,
+    "turns_to_lock": null,
+    "first_turn_questions": 5,
+    "format_ok": true,
+    "refs_loaded": [
+      "domain-packs.md",
+      "interrogation-rubric.md"
+    ],
+    "cost": 0.1571,
+    "mode": null,
+    "score": null,
+    "prd_valid": false,
+    "passed": true
+  }
+]

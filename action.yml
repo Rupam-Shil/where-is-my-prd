@@ -1,0 +1,42 @@
+name: "Where's My PRD"
+description: "Fail the build when a feature PRD is missing, still has open P0 blockers, or is incomplete."
+author: "Rupam Shil"
+branding:
+  icon: file-text
+  color: orange
+
+inputs:
+  paths:
+    description: "Space-separated PRD files or directories to validate."
+    required: false
+    default: "docs/prd"
+  require-pr-link:
+    description: "When 'true' on pull_request events, the PR description must link at least one docs/prd/<slug>-prd.md, and every linked PRD must pass."
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Validate PRDs
+      shell: sh
+      env:
+        PRD_PATHS: ${{ inputs.paths }}
+        REQUIRE_PR_LINK: ${{ inputs.require-pr-link }}
+        PR_BODY: ${{ github.event.pull_request.body }}
+      run: |
+        set -eu
+        set -f
+        validator="$GITHUB_ACTION_PATH/skills/wheres-my-prd/scripts/validate-prd.sh"
+        if [ "$REQUIRE_PR_LINK" = "true" ] && [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+          links=$(printf '%s\n' "$PR_BODY" | grep -Eo 'docs/prd/[a-z0-9-]+-prd\.md' | sort -u || true)
+          if [ -z "$links" ]; then
+            echo "::error title=Where's My PRD::Link a locked PRD in the PR description (docs/prd/<feature-slug>-prd.md)."
+            exit 1
+          fi
+          # shellcheck disable=SC2086
+          sh "$validator" $links
+        else
+          # shellcheck disable=SC2086
+          sh "$validator" $PRD_PATHS
+        fi

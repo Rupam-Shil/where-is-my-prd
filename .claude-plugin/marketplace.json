@@ -1,0 +1,19 @@
+{
+  "name": "wheres-my-prd",
+  "description": "Where's My PRD: a pre-code spec gate that locks an implementation-ready PRD before your agent writes code.",
+  "owner": {
+    "name": "Rupam Shil"
+  },
+  "plugins": [
+    {
+      "name": "wheres-my-prd",
+      "source": "./",
+      "description": "Pre-code spec gate for AI coding agents. Locks an implementation-ready PRD before any code is written.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Rupam Shil",
+        "url": "https://github.com/Rupam-Shil"
+      }
+    }
+  ]
+}

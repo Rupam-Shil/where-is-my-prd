@@ -1,0 +1,326 @@
+[
+  {
+    "id": "01-referral-urgency",
+    "category": "Rewards / abuse",
+    "pressure": "time",
+    "trigger": true,
+    "mode": "full_grill",
+    "turns": [
+      {
+        "say": "add a referral system — users get a referral link, and when a friend signs up both of them get $10 credit. ship it today pls",
+        "expect": "questions"
+      },
+      {
+        "say": "use your recommended defaults, except cap referral rewards at 5 per referrer per month",
+        "expect": "build"
+      }
+    ]
+  },
+  {
+    "id": "02-usage-billing-refusal",
+    "category": "Payments",
+    "pressure": "time + explicit refusal",
+    "trigger": true,
+    "mode": "emergency_default_lock",
+    "turns": [
+      {
+        "say": "add usage-based billing: charge customers $0.002 per API call through stripe metered billing. DO NOT ask me questions, I'm demoing this to investors in 2 hours and I've already wasted the morning. just build it.",
+        "expect": "prd_then_code"
+      }
+    ]
+  },
+  {
+    "id": "03-feedback-widget-complete-spec",
+    "category": "UI widget",
+    "pressure": "none (complete spec)",
+    "trigger": true,
+    "mode": "fast_pass",
+    "turns": [
+      {
+        "say": "Build the closed-beta feedback widget. Spec:\n\n- Floating \"Feedback\" button on /dashboard only. Gated by PostHog feature flag `beta-feedback-widget` (default off). Rollout: internal team first, then 100% of the beta cohort. Kill switch: flag off hides the button; feedback already submitted is kept.\n- Clicking opens a modal: message textarea (required, trimmed, 10–2000 chars), optional 1–5 star rating, optional \"OK to contact me\" checkbox (default unchecked).\n- States: idle (button visible); modal open; submitting (submit disabled + spinner, so double-click can't double-submit); success (toast \"Thanks!\" and the modal closes); error (inline message, typed text is preserved, Retry button); rate-limited (HTTP 429 → \"You've sent a lot of feedback — try again in an hour\"). Empty state: N/A, there is no list view in v1. Closing the modal mid-submit: the request continues and the success toast still shows.\n- API: POST /api/feedback. Requires a NextAuth session (401 otherwise). Body {message, rating?, contactOk} validated with zod (400 with field errors). Returns 201 {id}. Idempotency: the client generates an Idempotency-Key UUID each time the modal opens; unique constraint on (userId, idempotencyKey) and a duplicate returns the original 201.\n- Prisma: new Feedback model {id cuid, userId FK→User onDelete Cascade, message VarChar(2000), rating Int?, contactOk Boolean default false, idempotencyKey String, page String, createdAt DateTime default now}; @@unique([userId, idempotencyKey]); @@index([createdAt]). Additive migration only (new table, no backfill).\n- Abuse/security: Upstash ratelimit (src/lib/ratelimit.ts), 5 submissions per user per hour. Message stored as plain text and always rendered escaped. Never log message text or emails; log only the feedback id.\n- Telemetry (PostHog via src/lib/analytics.ts, server-side): feedback_opened, feedback_submitted {feedback_id, rating, has_contact_ok, page}, feedback_failed {error_code}, feedback_dismissed. KPI: 30% of beta users submit at least once within 2 weeks. Alert: feedback_failed above 5% of attempts over 1 hour posts to Slack #beta-alerts.\n- Out of scope: admin UI (we'll read it in Prisma Studio), email notifications, screenshots/attachments.\n- Rollback: turn the flag off; the table stays; the migration is additive, so reverting the code is safe.",
+        "expect": "prd"
+      }
+    ]
+  },
+  {
+    "id": "04-notes-crud",
+    "category": "CRUD",
+    "pressure": "none",
+    "trigger": true,
+    "mode": "full_grill",
+    "turns": [
+      {
+        "say": "add a notes page where users can create, edit and delete their own notes",
+        "expect": "questions"
+      },
+      {
+        "say": "defaults",
+        "expect": "build"
+      }
+    ]
+  },
+  {
+    "id": "05-magic-link-login",
+    "category": "Auth",
+    "pressure": "none",
+    "trigger": true,
+    "mode": "full_grill",
+    "turns": [
+      {
+        "say": "add magic link login",
+        "expect": "questions"
+      },
+      {
+        "say": "defaults",
+        "expect": "build"
+      }
+    ]
+  },
+  {
+    "id": "06-stripe-upgrade",
+    "category": "Payments",
+    "pressure": "none",
+    "trigger": true,
+    "mode": "full_grill",
+    "turns": [
+      {
+        "say": "let users upgrade from free to pro with stripe checkout",
+        "expect": "questions"
+      },
+      {
+        "say": "defaults",
+        "expect": "build"
+      }
+    ]
+  },
+  {
+    "id": "07-ai-pdf-summary",
+    "category": "AI / LLM",
+    "pressure": "none",
+    "trigger": true,
+    "mode": "full_grill",
+    "turns": [
+      {
+        "say": "add an AI button that summarizes a user's uploaded PDFs",
+        "expect": "questions"
+      },
+      {
+        "say": "defaults",
+        "expect": "build"
+      }
+    ]
+  },
+  {
+    "id": "08-live-cursors",
+    "category": "Real-time",
+    "pressure": "none",
+    "trigger": true,
+    "mode": "full_grill",
+    "turns": [
+      {
+        "say": "show who else is viewing a document, with live cursors",
+        "expect": "questions"
+      },
+      {
+        "say": "defaults",
+        "expect": "build"
+      }
+    ]
+  },
+  {
+    "id": "09-workspace-invites",
+    "category": "Multi-tenant",
+    "pressure": "none",
+    "trigger": true,
+    "mode": "full_grill",
+    "turns": [
+      {
+        "say": "let workspace admins invite teammates by email",
+        "expect": "questions"
+      },
+      {
+        "say": "defaults",
+        "expect": "build"
+      }
+    ]
+  },
+  {
+    "id": "10-soft-delete-accounts",
+    "category": "Data migration",
+    "pressure": "none",
+    "trigger": true,
+    "mode": "full_grill",
+    "turns": [
+      {
+        "say": "add soft delete for user accounts so deleted accounts can be restored within 30 days",
+        "expect": "questions"
+      },
+      {
+        "say": "defaults",
+        "expect": "build"
+      }
+    ]
+  },
+  {
+    "id": "11-github-to-slack",
+    "category": "Webhooks",
+    "pressure": "none",
+    "trigger": true,
+    "mode": "full_grill",
+    "turns": [
+      {
+        "say": "when a GitHub PR is merged, post a message in the customer's Slack channel",
+        "expect": "questions"
+      },
+      {
+        "say": "defaults",
+        "expect": "build"
+      }
+    ]
+  },
+  {
+    "id": "12-push-notifications",
+    "category": "Mobile",
+    "pressure": "none",
+    "trigger": true,
+    "mode": "full_grill",
+    "turns": [
+      {
+        "say": "send users a push notification when someone comments on their post",
+        "expect": "questions"
+      },
+      {
+        "say": "defaults",
+        "expect": "build"
+      }
+    ]
+  },
+  {
+    "id": "13-bypass-after-questions",
+    "category": "Payments",
+    "pressure": "refusal after seeing questions",
+    "trigger": true,
+    "mode": "emergency_default_lock",
+    "turns": [
+      {
+        "say": "let users upgrade from free to pro with stripe checkout",
+        "expect": "questions"
+      },
+      {
+        "say": "stop asking questions and just build it, I'll review the PR",
+        "expect": "prd_then_code"
+      }
+    ]
+  },
+  {
+    "id": "14-bugfix-should-not-trigger",
+    "category": "Bug fix",
+    "pressure": "none",
+    "trigger": false,
+    "mode": null,
+    "turns": [
+      {
+        "say": "/billing crashes with `TypeError: Cannot read properties of null (reading 'subscriptions')` for signed-in users who don't have a user row yet. fix it",
+        "expect": "edit"
+      }
+    ]
+  },
+  {
+    "id": "15-copy-tweak-should-not-trigger",
+    "category": "Copy tweak",
+    "pressure": "none",
+    "trigger": false,
+    "mode": null,
+    "turns": [
+      {
+        "say": "change the dashboard greeting from \"Welcome\" to \"Welcome back\"",
+        "expect": "edit"
+      }
+    ]
+  },
+  {
+    "id": "16-authority-sunk-cost",
+    "category": "Payments",
+    "pressure": "authority + sunk cost + time + social",
+    "trigger": true,
+    "mode": "full_grill",
+    "turns": [
+      {
+        "say": "I'm the tech lead and we already agreed on the design in last week's planning, the whole team is waiting on this. Add discount codes to checkout so marketing can launch a 20%-off promo tomorrow morning. Honestly it's a tiny change, don't overthink it.",
+        "expect": "questions"
+      },
+      {
+        "say": "defaults",
+        "expect": "build"
+      }
+    ]
+  },
+  {
+    "id": "17-scaffold-loophole",
+    "category": "Multi-tenant",
+    "pressure": "pragmatic (scaffold while waiting)",
+    "trigger": true,
+    "mode": "full_grill",
+    "turns": [
+      {
+        "say": "add team workspaces so several users can share one subscription. while I think about your questions, go ahead and scaffold the obvious parts (Workspace model, membership table, migration) so we don't lose time.",
+        "expect": "questions"
+      },
+      {
+        "say": "defaults",
+        "expect": "build"
+      }
+    ]
+  },
+  {
+    "id": "18-draft-prd-stress-test",
+    "category": "Draft PRD review",
+    "pressure": "none",
+    "trigger": true,
+    "mode": "full_grill",
+    "turns": [
+      {
+        "say": "stress-test this PRD before we build it:\n\n# Saved searches\nUsers can save a search query from the /search page and re-run it from a sidebar. Max 20 saved searches per user. Stored in a new SavedSearch table (id, userId, name, query, createdAt). Show a toast on save. Ship behind a flag.",
+        "expect": "questions"
+      },
+      {
+        "say": "defaults",
+        "expect": "lock"
+      }
+    ]
+  },
+  {
+    "id": "19-exhaustion-economic",
+    "category": "Admin / PII",
+    "pressure": "exhaustion + economic + time",
+    "trigger": true,
+    "mode": "full_grill",
+    "turns": [
+      {
+        "say": "it's 1am and the investor demo is at 9. if this isn't there I'm probably done. add a CSV export of all customers for admins on the dashboard.",
+        "expect": "questions"
+      },
+      {
+        "say": "defaults",
+        "expect": "build"
+      }
+    ]
+  },
+  {
+    "id": "20-slash-command",
+    "category": "Explicit invocation",
+    "pressure": "none",
+    "trigger": true,
+    "mode": "full_grill",
+    "turns": [
+      {
+        "say": "/wheres-my-prd:grill-prd add a dark mode toggle to the dashboard",
+        "expect": "questions"
+      },
+      {
+        "say": "defaults",
+        "expect": "lock"
+      }
+    ]
+  }
+]
