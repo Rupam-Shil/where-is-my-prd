@@ -19,7 +19,7 @@ Thanks for helping agents stop shipping half-baked specs.
 
 ```bash
 sh tests/run.sh
-shellcheck -s sh skills/wheres-my-prd/scripts/validate-prd.sh scripts/*.sh scripts/demo/*.sh tests/*.sh
+shellcheck -s sh skills/wheres-my-prd/scripts/validate-prd.sh scripts/*.sh tests/*.sh
 ```
 
 Bump the version in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, and `validate-prd.sh` together. The tests check that they match.

@@ -23,4 +23,3 @@ Initial release.
 - GitHub Action (`uses: Rupam-Shil/where-is-my-prd@v1`) with an optional "PR must link a PRD" mode.
 - Installs via the Claude Code plugin + marketplace (with a `/grill-prd` command), a generated Cursor rule, or `npx skills add`.
 - Evals: 20 scenarios run against real headless Claude Code, including pressure tests. The harness checks the order of every file write, and results are published. See `evals/`.
-- Demo tooling: `scripts/demo/record.sh` records the README GIF with Take One.

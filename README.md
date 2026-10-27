@@ -12,8 +12,6 @@ Give a coding agent a two-line prompt and it will invent your database schema, s
 
 **Where's My PRD** is an open-source agent skill that puts a hard gate in front of your agent's first edit. It scores the request across five dimensions, asks at most five sharp questions with a recommended default for each, and writes a locked, machine-checkable PRD before any application code exists. Answering takes one reply. A good spec passes in zero questions.
 
-<!-- demo GIF (assets/demo.gif) is recorded with Take One: sh scripts/demo/record.sh "/Applications/Take One.app" -->
-
 ```text
 > add a referral system — users get a referral link, and when a friend signs up both get $10 credit. ship it today pls
 
@@ -241,7 +239,6 @@ where-is-my-prd/
 │   └── scripts/validate-prd.sh # Zero-dependency PRD linter
 ├── examples/                   # Real transcripts for all three modes + generated PRDs
 ├── evals/                      # 20 scenarios run against real headless Claude Code, results
-├── scripts/demo/               # Records assets/demo.gif with Take One
 ├── action.yml                  # GitHub Action: uses: Rupam-Shil/where-is-my-prd@v1
 └── tests/run.sh                # Validator + repo tests (sh, dash, bash, ksh)
 ```
